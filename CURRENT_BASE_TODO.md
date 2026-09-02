@@ -39,10 +39,11 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Status: Complete. The reviewed cleanup is recorded in a focused Git commit.
   - Evidence: Commit `c118ed3` tracks the initial project tree. The September 2 review found no real credentials, removed generated `.lavish` review files, expanded ignore coverage for environment variants and tool caches, and replaced the API's untracked generated `Env` type dependency with checked-in binding types.
 
-- [ ] **BASE-002 · P0 — Run migrations against real PostgreSQL**
+- [x] **BASE-002 · P0 — Run migrations against real PostgreSQL**
   - Start the local PostgreSQL service, apply all migrations, run `pnpm db:check`, and execute the integration suite without skips.
   - Acceptance: All three existing database integration tests execute and pass rather than being skipped.
-  - Evidence: `packages/db/src/foundation.integration.test.ts`.
+  - Status: Complete. The Docker Compose PostgreSQL 17 service is healthy and the repository migration/test path succeeds against it.
+  - Evidence: `0001_foundation.sql` through `0004_appointment_workflow.sql` are recorded in `schema_migrations`; `pnpm db:check` passes; `packages/db/src/foundation.integration.test.ts` executes all three tests with 3 passed and 0 skipped.
 
 - [ ] **BASE-003 · P1 — Make skipped integration tests fail CI**
   - Require `TEST_DATABASE_URL` and prevent the integration job from reporting success when the database suite does not execute.
