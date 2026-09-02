@@ -59,7 +59,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 
 ## 2. Authentication and onboarding
 
-- [ ] **AUTH-001 · P0 — Build the clinic creation wizard**
+- [x] **AUTH-001 · P0 — Build the clinic creation wizard**
   - Connect the dashboard empty state to an operational clinic-creation and initial-setup flow.
   - Acceptance: A verified user can create a clinic and immediately proceed to location setup.
   - Evidence: The API supports clinic creation, but `apps/dashboard/src/components/dashboard-app.tsx` exposes only an empty state.

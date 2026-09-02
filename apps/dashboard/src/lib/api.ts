@@ -1,6 +1,7 @@
 import { environment } from './environment';
 
 export type Clinic = { id: string; name: string; slug: string; role: string };
+export type ClinicLocation = { id: string; clinicId?: string; name: string; timezone: string; city?: string | null; region?: string | null };
 export type Appointment = { id: string; startsAt: string; endsAt: string; status: string; patientDisplayName: string; serviceName: string };
 export type DashboardOverview = {
   metrics: { todayScheduled: number; completed: number; inProgress: number; newPatientsThisMonth: number };

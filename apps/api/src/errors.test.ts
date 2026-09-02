@@ -8,4 +8,12 @@ describe('API error normalization', () => {
       code: 'IDEMPOTENCY_KEY_REUSED'
     });
   });
+
+  it('returns an actionable conflict for a duplicate clinic slug', () => {
+    const error = normalizeError({ code: '23505', constraint: 'clinics_slug_key' });
+
+    expect(error.status).toBe(409);
+    expect(error.code).toBe('CLINIC_SLUG_TAKEN');
+    expect(error.message).toBe('That clinic URL is already in use. Choose another one.');
+  });
 });

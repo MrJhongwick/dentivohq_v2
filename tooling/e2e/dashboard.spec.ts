@@ -18,3 +18,32 @@ test('dashboard preview matches the operational shell and filters appointments',
     await expect(page.getByText('Bright Smile Dental').first()).toBeVisible();
   }
 });
+
+test('verified user can create a clinic and proceed through initial location setup', async ({ page }) => {
+  await page.route('**/api/v1/clinics', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      status: 201,
+      body: JSON.stringify({ data: { id: '18cb5f8f-251f-4e47-83fe-d881ba0f318f', name: 'Harbor Dental', slug: 'harbor-dental', role: 'CLINIC_OWNER' } })
+    });
+  });
+  await page.route('**/api/v1/clinics/18cb5f8f-251f-4e47-83fe-d881ba0f318f/locations', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      status: 201,
+      body: JSON.stringify({ data: { id: 'f5559484-882a-469b-b738-58e1451e72bc', name: 'Main clinic', timezone: 'Asia/Manila' } })
+    });
+  });
+
+  await page.goto('http://127.0.0.1:5173/onboarding-preview');
+  await expect(page.getByRole('heading', { name: 'Create your clinic' })).toBeVisible();
+  await page.getByLabel('Clinic name').fill('Harbor Dental');
+  await expect(page.getByLabel('Booking page URL')).toHaveValue('harbor-dental');
+  await page.getByRole('button', { name: 'Continue to location' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Add your first location' })).toBeVisible();
+  await page.getByLabel('Location name').fill('Main clinic');
+  await page.getByLabel('Timezone').fill('Asia/Manila');
+  await page.getByRole('button', { name: 'Finish setup' }).click();
+  await expect(page).toHaveURL(/\/dashboard-preview$/);
+});

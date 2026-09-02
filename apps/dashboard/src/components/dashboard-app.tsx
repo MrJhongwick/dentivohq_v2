@@ -1,7 +1,8 @@
-import { Card, CardContent, EmptyState, Skeleton } from '@dentivohq/ui';
+import { Card, CardContent, Skeleton } from '@dentivohq/ui';
 import { CalendarDays, CreditCard, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { apiRequest, type Clinic, type DashboardOverview } from '../lib/api';
+import { ClinicSetupWizard } from './clinic-setup-wizard';
 import { DashboardSidebar } from './dashboard/dashboard-sidebar';
 import { DashboardTopbar } from './dashboard/dashboard-topbar';
 import type { DashboardPreview, DashboardUser } from './dashboard/dashboard-types';
@@ -20,6 +21,8 @@ export function DashboardApp({ user, preview }: Props) {
   const [query, setQuery] = useState('');
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const [setupClinic, setSetupClinic] = useState<Clinic | undefined>();
+  const [overviewRevision, setOverviewRevision] = useState(0);
 
   useEffect(() => {
     if (preview) return;
@@ -44,7 +47,7 @@ export function DashboardApp({ user, preview }: Props) {
       if ((caught as Error).name !== 'AbortError') setError(caught instanceof Error ? caught.message : 'Unable to load the dashboard.');
     }).finally(() => setLoading(false));
     return () => controller.abort();
-  }, [currentClinicId, preview]);
+  }, [currentClinicId, overviewRevision, preview]);
 
   const clinic = clinics.find((item) => item.id === currentClinicId) ?? clinics[0];
   const normalizedQuery = query.trim().toLowerCase();
@@ -66,7 +69,30 @@ export function DashboardApp({ user, preview }: Props) {
     setCurrentClinicId(clinicId);
   }
 
-  if (!loading && !clinic) return <main className="mx-auto min-h-screen max-w-2xl px-5 py-20"><Card><CardContent className="p-6"><EmptyState title="Create your first clinic" description="Your account is ready. Clinic onboarding is required before the operational dashboard can load." /></CardContent></Card></main>;
+  if (!loading && (!clinic || setupClinic)) return <ClinicSetupWizard
+    initialClinic={setupClinic}
+    onClinicCreated={(createdClinic) => {
+      setClinics((current) => [...current, createdClinic]);
+      setCurrentClinicId(createdClinic.id);
+      setSetupClinic(createdClinic);
+    }}
+    onComplete={() => {
+      setSetupClinic(undefined);
+      setOverview(null);
+      setLoading(true);
+      setOverviewRevision((current) => current + 1);
+    }}
+  />;
+
+  if (!loading && clinic && !overview?.location && (clinic.role === 'CLINIC_OWNER' || clinic.role === 'CLINIC_ADMIN')) return <ClinicSetupWizard
+    initialClinic={clinic}
+    onClinicCreated={() => undefined}
+    onComplete={() => {
+      setOverview(null);
+      setLoading(true);
+      setOverviewRevision((current) => current + 1);
+    }}
+  />;
 
   const plan = String(overview?.subscription?.plan ?? 'FREE');
   return <div className="dashboard-shell min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[238px_minmax(0,1fr)]">

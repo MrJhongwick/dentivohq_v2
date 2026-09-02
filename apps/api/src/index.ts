@@ -87,7 +87,9 @@ app.all('/api/auth/*', (c) => c.get('auth').handler(c.req.raw));
 app.get('/api/v1/clinics', requireSession, async (c) => c.json({ data: await listUserClinics(c.get('db'), c.get('authSession').user.id) }));
 
 app.post('/api/v1/clinics', requireSession, async (c) => {
-  const clinic = await createClinic(c.get('db'), c.get('authSession').user.id, createClinicSchema.parse(await c.req.json()));
+  const session = c.get('authSession');
+  if (!session.user.emailVerified) throw new AppError(403, 'EMAIL_VERIFICATION_REQUIRED', 'Verify your email before creating a clinic.');
+  const clinic = await createClinic(c.get('db'), session.user.id, createClinicSchema.parse(await c.req.json()));
   return c.json({ data: clinic }, 201);
 });
 
