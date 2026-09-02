@@ -1,0 +1,14 @@
+@theme {
+  --color-background: #f7faf8;
+  --color-foreground: #15241f;
+  --color-card: #ffffff;
+  --color-card-foreground: #15241f;
+  --color-primary: #176b52;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #edf7f3;
+  --color-secondary-foreground: #176b52;
+  --color-muted: #edf2ef;
+  --color-muted-foreground: #647a73;
+  --color-border: #dfe9e5;
+  --color-ring: #176b52;
+}

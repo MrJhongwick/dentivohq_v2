@@ -1,0 +1,14 @@
+{
+  "name": "@dentivohq/db",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "build": "tsc --noEmit", "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@dentivohq/validation": "workspace:*",
+    "postgres": "^3.4.7"
+  },
+  "devDependencies": { "@types/node": "^24.3.0", "typescript": "catalog:" }
+}

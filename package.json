@@ -1,0 +1,36 @@
+{
+  "name": "dentivohq",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.13.1",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter './apps/*' dev",
+    "dev:landing": "pnpm --filter @dentivohq/landing dev",
+    "dev:api": "pnpm --filter @dentivohq/api dev",
+    "dev:dashboard": "pnpm --filter @dentivohq/dashboard dev",
+    "dev:console": "pnpm --filter @dentivohq/console dev",
+    "build": "pnpm -r build",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:integration": "vitest run --config tooling/vitest.integration.config.ts --passWithNoTests",
+    "test:e2e": "playwright test",
+    "db:migrate": "tsx packages/db/src/migrate.ts",
+    "db:check": "tsx packages/db/src/migrate.ts --check"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.3.0",
+    "eslint": "^10.9.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.5",
+    "globals": "^16.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.41.0",
+    "vitest": "^4.1.11"
+  }
+}

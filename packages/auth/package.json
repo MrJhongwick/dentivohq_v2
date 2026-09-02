@@ -1,0 +1,17 @@
+{
+  "name": "@dentivohq/auth",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "build": "tsc --noEmit", "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@dentivohq/config": "workspace:*",
+    "@dentivohq/db": "workspace:*",
+    "@neondatabase/serverless": "^1.1.0",
+    "better-auth": "^1.7.2",
+    "kysely": "^0.29.5",
+    "kysely-neon": "^3.0.0"
+  },
+  "devDependencies": { "typescript": "catalog:" }
+}

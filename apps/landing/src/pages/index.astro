@@ -1,0 +1,56 @@
+---
+import '../styles/global.css';
+import { browserEnvSchema } from '@dentivohq/config';
+
+const environment = browserEnvSchema.parse({
+  apiUrl: import.meta.env.PUBLIC_API_URL ?? 'http://localhost:8787',
+  dashboardUrl: import.meta.env.PUBLIC_DASHBOARD_URL ?? 'http://localhost:5173'
+});
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content="Simple online booking and practice tools for dental teams." />
+    <title>DentivoHQ — Dental appointments made simpler</title>
+  </head>
+  <body>
+    <header class="nav shell">
+      <a class="brand" href="/">DentivoHQ</a>
+      <nav>
+        <a href="#features">Features</a>
+        <a class="button secondary" href={environment.dashboardUrl}>Open dashboard</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero shell">
+        <div>
+          <p class="eyebrow">Dental appointment MVP</p>
+          <h1>Bookings, schedules, and practice operations in one simple workspace.</h1>
+          <p class="lead">Start with online appointment booking, a lightweight dashboard, and a private operations console.</p>
+          <div class="actions">
+            <a class="button" href={environment.dashboardUrl}>View booking demo</a>
+            <a class="text-link" href="#features">See what is included →</a>
+          </div>
+        </div>
+        <aside class="preview">
+          <span>Today</span>
+          <strong>8 appointments</strong>
+          <div class="appointment"><b>9:00 AM</b><span>Dental cleaning</span></div>
+          <div class="appointment"><b>10:30 AM</b><span>New patient consult</span></div>
+          <div class="appointment"><b>1:00 PM</b><span>Follow-up</span></div>
+        </aside>
+      </section>
+
+      <section id="features" class="features shell">
+        <article><h2>Online booking</h2><p>A fast patient-facing flow for choosing a service, date, and time.</p></article>
+        <article><h2>Practice dashboard</h2><p>See upcoming appointments and basic operating information.</p></article>
+        <article><h2>Admin console</h2><p>A separate internal surface for configuration and support tasks.</p></article>
+      </section>
+    </main>
+
+    <footer class="shell">© 2026 DentivoHQ. MVP scaffold.</footer>
+  </body>
+</html>

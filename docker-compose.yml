@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: dentivohq
+      POSTGRES_USER: dentivohq
+      POSTGRES_PASSWORD: dentivohq_local
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dentivohq -d dentivohq"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+    volumes:
+      - dentivohq_postgres:/var/lib/postgresql/data
+
+volumes:
+  dentivohq_postgres:

@@ -1,0 +1,27 @@
+{
+  "name": "@dentivohq/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "types": "wrangler types --include-runtime false",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dentivohq/auth": "workspace:*",
+    "@dentivohq/config": "workspace:*",
+    "@dentivohq/db": "workspace:*",
+    "@dentivohq/validation": "workspace:*",
+    "hono": "^4.13.5",
+    "resend": "^6.0.3",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260830.1",
+    "typescript": "catalog:",
+    "wrangler": "^4.127.1"
+  }
+}

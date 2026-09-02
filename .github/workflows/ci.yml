@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: dentivohq_test
+          POSTGRES_USER: dentivohq
+          POSTGRES_PASSWORD: dentivohq_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dentivohq -d dentivohq_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://dentivohq:dentivohq_test@localhost:5432/dentivohq_test
+      TEST_DATABASE_URL: postgresql://dentivohq:dentivohq_test@localhost:5432/dentivohq_test
+      BETTER_AUTH_SECRET: ci-only-secret-that-is-long-enough-for-tests
+      BETTER_AUTH_URL: http://localhost:8787
+      CORS_ORIGINS: http://localhost:5173
+      APP_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:integration
+      - run: pnpm build
