@@ -20,7 +20,13 @@ import { processNotificationJobs } from './services/notifications';
 
 type AuthSession = Awaited<ReturnType<DentivoAuth['api']['getSession']>>;
 type Variables = { runtime: ServerEnv; db: Database; auth: DentivoAuth; authSession: NonNullable<AuthSession> };
-type AppBindings = Env;
+type AppBindings = {
+  UPLOADS: R2Bucket;
+  PUBLIC_BOOKING_RATE_LIMIT: {
+    limit(options: { key: string }): Promise<{ success: boolean }>;
+  };
+  [key: string]: unknown;
+};
 type AppContext = Context<{ Bindings: AppBindings; Variables: Variables }>;
 const app = new Hono<{ Bindings: AppBindings; Variables: Variables }>();
 
@@ -251,4 +257,4 @@ export default {
     const runtime = parseServerEnv(env as unknown as Record<string, unknown>);
     context.waitUntil(processNotificationJobs(runtime));
   }
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<AppBindings>;

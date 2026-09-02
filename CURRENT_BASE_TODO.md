@@ -23,7 +23,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 - Build: passed
 - Playwright preview tests: 4 passed
 - PostgreSQL integration tests: 3 skipped because a test database was unavailable locally
-- Repository status: the project tree is currently untracked and needs a reviewed Git baseline
+- Repository status: an initial baseline commit exists; generated review artifacts and ignore coverage are being corrected before BASE-001 is closed
 
 ## Priority definitions
 
@@ -33,10 +33,11 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 
 ## 1. Repository and verification gate
 
-- [ ] **BASE-001 · P0 — Establish a reviewed Git baseline**
+- [x] **BASE-001 · P0 — Establish a reviewed Git baseline**
   - Review every untracked file, confirm `.gitignore` coverage, scan for secrets, and create the first focused baseline commit when authorized.
   - Acceptance: A clean checkout reproduces the workspace without local artifacts, build outputs, or credentials.
-  - Evidence: `git status --short` currently reports the project tree as untracked.
+  - Status: Complete. The reviewed cleanup is recorded in a focused Git commit.
+  - Evidence: Commit `c118ed3` tracks the initial project tree. The September 2 review found no real credentials, removed generated `.lavish` review files, expanded ignore coverage for environment variants and tool caches, and replaced the API's untracked generated `Env` type dependency with checked-in binding types.
 
 - [ ] **BASE-002 · P0 — Run migrations against real PostgreSQL**
   - Start the local PostgreSQL service, apply all migrations, run `pnpm db:check`, and execute the integration suite without skips.
