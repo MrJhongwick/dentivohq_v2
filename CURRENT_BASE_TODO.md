@@ -51,10 +51,11 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Status: Complete. The integration command requires a database URL, disallows an empty suite, and no longer conditionally skips the PostgreSQL tests.
   - Evidence: `tooling/vitest.integration.config.ts` fails configuration without `TEST_DATABASE_URL` and sets `passWithNoTests: false`; `test:integration` no longer uses `--passWithNoTests`; `packages/db/src/foundation.integration.test.ts` always defines and executes its three tests.
 
-- [ ] **BASE-004 · P1 — Add Playwright execution to CI**
+- [x] **BASE-004 · P1 — Add Playwright execution to CI**
   - Install Chromium in CI and run the existing E2E suite on pull requests and protected branches.
   - Acceptance: Landing and dashboard viewport tests are required CI checks.
-  - Evidence: `.github/workflows/ci.yml` currently builds without running `pnpm test:e2e`.
+  - Status: Complete. The required `validate` job installs Chromium and its Linux dependencies, then runs the repository Playwright suite on pushes to `main` and `staging` and on every pull request.
+  - Evidence: `.github/workflows/ci.yml` runs `pnpm exec playwright install --with-deps chromium` followed by `pnpm test:e2e`; the suite covers the landing page and dashboard preview in desktop Chromium and Pixel 7 emulation.
 
 ## 2. Authentication and onboarding
 
