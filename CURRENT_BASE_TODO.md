@@ -45,10 +45,11 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Status: Complete. The Docker Compose PostgreSQL 17 service is healthy and the repository migration/test path succeeds against it.
   - Evidence: `0001_foundation.sql` through `0004_appointment_workflow.sql` are recorded in `schema_migrations`; `pnpm db:check` passes; `packages/db/src/foundation.integration.test.ts` executes all three tests with 3 passed and 0 skipped.
 
-- [ ] **BASE-003 · P1 — Make skipped integration tests fail CI**
+- [x] **BASE-003 · P1 — Make skipped integration tests fail CI**
   - Require `TEST_DATABASE_URL` and prevent the integration job from reporting success when the database suite does not execute.
   - Acceptance: CI fails if every PostgreSQL integration test is skipped.
-  - Evidence: `test:integration` currently uses `--passWithNoTests`.
+  - Status: Complete. The integration command requires a database URL, disallows an empty suite, and no longer conditionally skips the PostgreSQL tests.
+  - Evidence: `tooling/vitest.integration.config.ts` fails configuration without `TEST_DATABASE_URL` and sets `passWithNoTests: false`; `test:integration` no longer uses `--passWithNoTests`; `packages/db/src/foundation.integration.test.ts` always defines and executes its three tests.
 
 - [ ] **BASE-004 · P1 — Add Playwright execution to CI**
   - Install Chromium in CI and run the existing E2E suite on pull requests and protected branches.

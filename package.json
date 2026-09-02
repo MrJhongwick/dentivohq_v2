@@ -15,7 +15,7 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
-    "test:integration": "vitest run --config tooling/vitest.integration.config.ts --passWithNoTests",
+    "test:integration": "vitest run --config tooling/vitest.integration.config.ts",
     "test:e2e": "playwright test",
     "db:migrate": "tsx packages/db/src/migrate.ts",
     "db:check": "tsx packages/db/src/migrate.ts --check"
