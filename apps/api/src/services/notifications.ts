@@ -8,10 +8,10 @@ export async function processNotificationJobs(env: ServerEnv) {
   const jobs = await claimNotificationJobs(db);
   await Promise.all(jobs.map(async (job) => {
     try {
-      await sendEmail({ to: String(job.recipient), subject: String(job.subject), text: String(job.body_text) });
-      await completeNotificationJob(db, String(job.job_id));
+      await sendEmail({ to: String(job.recipient), subject: String(job.subject), text: String(job.body_text) }, { idempotencyKey: String(job.provider_key) });
+      await completeNotificationJob(db, String(job.job_id), String(job.lease_token));
     } catch {
-      await failNotificationJob(db, String(job.job_id), 'DELIVERY_FAILED');
+      await failNotificationJob(db, String(job.job_id), String(job.lease_token), 'DELIVERY_FAILED');
     }
   }));
 }

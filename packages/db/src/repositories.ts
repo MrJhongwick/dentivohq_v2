@@ -603,16 +603,33 @@ export async function claimNotificationJobs(db: Database, limit = 25) {
   return db`select * from claim_notification_jobs(${limit})`;
 }
 
-export async function completeNotificationJob(db: Database, jobId: string) {
-  await db.transaction((tx) => [
-    tx`update notification_jobs set status = 'DELIVERED' where id = ${jobId}`,
-    tx`insert into notification_deliveries(clinic_id, job_id, provider, status) select clinic_id, id, 'RESEND', 'DELIVERED' from notification_jobs where id = ${jobId}`
-  ]);
+export async function completeNotificationJob(db: Database, jobId: string, leaseToken: string) {
+  const rows = await db`
+    with completed as (
+      update notification_jobs set status = 'DELIVERED', lease_token = null, lease_expires_at = null
+      where id = ${jobId} and status = 'PROCESSING' and lease_token = ${leaseToken}
+      returning id, clinic_id
+    )
+    insert into notification_deliveries(clinic_id, job_id, provider, status)
+    select clinic_id, id, 'RESEND', 'DELIVERED' from completed
+    on conflict(job_id, provider) do update set status = 'DELIVERED', error_code = null
+    returning job_id
+  `;
+  return Boolean(rows[0]);
 }
 
-export async function failNotificationJob(db: Database, jobId: string, errorCode: string) {
-  await db.transaction((tx) => [
-    tx`update notification_jobs set status = case when attempts >= 5 then 'FAILED' else 'PENDING' end, scheduled_for = now() + interval '5 minutes' where id = ${jobId}`,
-    tx`insert into notification_deliveries(clinic_id, job_id, provider, status, error_code) select clinic_id, id, 'RESEND', 'FAILED', ${errorCode} from notification_jobs where id = ${jobId}`
-  ]);
+export async function failNotificationJob(db: Database, jobId: string, leaseToken: string, errorCode: string) {
+  const rows = await db`
+    with failed as (
+      update notification_jobs set status = case when attempts >= 5 then 'FAILED' else 'PENDING' end,
+        scheduled_for = now() + interval '5 minutes', lease_token = null, lease_expires_at = null
+      where id = ${jobId} and status = 'PROCESSING' and lease_token = ${leaseToken}
+      returning id, clinic_id
+    )
+    insert into notification_deliveries(clinic_id, job_id, provider, status, error_code)
+    select clinic_id, id, 'RESEND', 'FAILED', ${errorCode} from failed
+    on conflict(job_id, provider) do update set status = 'FAILED', error_code = excluded.error_code
+    returning job_id
+  `;
+  return Boolean(rows[0]);
 }
