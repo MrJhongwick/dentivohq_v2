@@ -2,15 +2,15 @@ import { createAuth, permissionForAppointmentStatus, resolveAuthorizedMembership
 import { parseServerEnv, type ServerEnv } from '@dentivohq/config';
 import {
   abandonFileMetadata, acceptStaffInvitation, activateFileMetadata, assignDentistLocation, assignDentistService, beginFileDeletion,
-  createAppointment, createClinic, createDatabase, createDentist, createLocation, createPatient,
-  createPublicAppointment, createSchedule, createService, createStaffInvitation, finalizeFileDeletion,
+  createAppointment, createClinic, createDatabase, createDentist, createLocation, createPatient, createScheduleException, createTimeOff,
+  createPublicAppointment, createSchedule, createService, createStaffInvitation, deleteSchedule, deleteScheduleException, deleteTimeOff, finalizeFileDeletion,
   fileOwnerBelongsToClinic, findFileMetadata, getClinicDashboardOverview, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
-  listDentists, listLocations, listServices, listUserClinics, reserveFileMetadata, rescheduleAppointment, unassignDentistLocation, unassignDentistService, updateAppointmentStatus, updateDentist, updateLocation, updateService, type Database
+  listDentists, listLocations, listSchedulingRules, listServices, listUserClinics, reserveFileMetadata, rescheduleAppointment, unassignDentistLocation, unassignDentistService, updateAppointmentStatus, updateDentist, updateLocation, updateSchedule, updateScheduleException, updateService, updateTimeOff, type Database
 } from '@dentivohq/db';
 import {
   acceptInvitationSchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
-  createLocationSchema, createPatientSchema, createScheduleSchema, createServiceSchema, inviteStaffSchema,
-  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateDentistSchema, updateLocationSchema, updateServiceSchema, uuidSchema
+  createLocationSchema, createPatientSchema, createScheduleExceptionSchema, createScheduleSchema, createServiceSchema, createTimeOffSchema, inviteStaffSchema,
+  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateDentistSchema, updateLocationSchema, updateScheduleExceptionSchema, updateScheduleSchema, updateServiceSchema, updateTimeOffSchema, uuidSchema
 } from '@dentivohq/validation';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
@@ -197,6 +197,16 @@ app.post('/api/v1/clinics/:clinicId/schedules', requireSession, requireClinicPer
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   return c.json({ data: await createSchedule(c.get('db'), clinicId, c.get('authSession').user.id, createScheduleSchema.parse(await c.req.json())) }, 201);
 });
+
+app.get('/api/v1/clinics/:clinicId/scheduling-rules', requireSession, requireClinicPermission('appointment.read'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); return c.json({ data: await listSchedulingRules(c.get('db'), clinicId) }); });
+app.patch('/api/v1/clinics/:clinicId/schedules/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await updateSchedule(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), updateScheduleSchema.parse(await c.req.json())); if (!data) throw new AppError(404, 'SCHEDULE_NOT_FOUND', 'Schedule not found.'); return c.json({ data }); });
+app.delete('/api/v1/clinics/:clinicId/schedules/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); await deleteSchedule(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId'))); return c.body(null, 204); });
+app.post('/api/v1/clinics/:clinicId/schedule-exceptions', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); return c.json({ data: await createScheduleException(c.get('db'), clinicId, createScheduleExceptionSchema.parse(await c.req.json())) }, 201); });
+app.patch('/api/v1/clinics/:clinicId/schedule-exceptions/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await updateScheduleException(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), updateScheduleExceptionSchema.parse(await c.req.json())); if (!data) throw new AppError(404, 'SCHEDULE_EXCEPTION_NOT_FOUND', 'Schedule exception not found.'); return c.json({ data }); });
+app.delete('/api/v1/clinics/:clinicId/schedule-exceptions/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); await deleteScheduleException(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId'))); return c.body(null, 204); });
+app.post('/api/v1/clinics/:clinicId/time-off', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); return c.json({ data: await createTimeOff(c.get('db'), clinicId, createTimeOffSchema.parse(await c.req.json())) }, 201); });
+app.patch('/api/v1/clinics/:clinicId/time-off/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await updateTimeOff(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), updateTimeOffSchema.parse(await c.req.json())); if (!data) throw new AppError(404, 'TIME_OFF_NOT_FOUND', 'Time off not found.'); return c.json({ data }); });
+app.delete('/api/v1/clinics/:clinicId/time-off/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); await deleteTimeOff(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId'))); return c.body(null, 204); });
 
 app.post('/api/v1/clinics/:clinicId/patients', requireSession, requireClinicPermission('patient.create'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());

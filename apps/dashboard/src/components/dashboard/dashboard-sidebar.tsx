@@ -4,7 +4,7 @@ import type { Clinic } from '../../lib/api';
 
 const mainNavigation = [
   { label: 'Dashboard', icon: Home }, { label: 'Calendar', icon: CalendarDays }, { label: 'Patients', icon: Users },
-  { label: 'Appointments', icon: ClipboardList }, { label: 'Treatments', icon: Stethoscope }, { label: 'Services', icon: Stethoscope }, { label: 'Billing & Payments', icon: CreditCard }
+  { label: 'Appointments', icon: ClipboardList }, { label: 'Treatments', icon: Stethoscope }, { label: 'Services', icon: Stethoscope }, { label: 'Schedules', icon: CalendarDays }, { label: 'Billing & Payments', icon: CreditCard }
 ];
 const sections = [
   { title: 'Clinic operations', items: [{ label: 'Team', icon: Users }, { label: 'Referrals', icon: BarChart3 }, { label: 'Marketing', icon: Megaphone }, { label: 'Reports & Analytics', icon: BarChart3 }] },

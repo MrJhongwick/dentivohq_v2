@@ -83,6 +83,11 @@ export const createScheduleSchema = z.object({
   startsAtLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), endsAtLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
   effectiveFrom: z.iso.date().optional(), effectiveTo: z.iso.date().optional()
 }).refine((value) => value.startsAtLocal < value.endsAtLocal, { message: 'Schedule start must precede end.' });
+export const updateScheduleSchema = z.object({ dentistId: uuidSchema.optional(), locationId: uuidSchema.optional(), dayOfWeek: z.number().int().min(0).max(6).optional(), startsAtLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), endsAtLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), effectiveFrom: z.iso.date().optional(), effectiveTo: z.iso.date().optional() }).refine((value) => Object.keys(value).length > 0, { message: 'At least one schedule field is required.' });
+export const createScheduleExceptionSchema = z.object({ dentistId: uuidSchema, locationId: uuidSchema, exceptionDate: z.iso.date(), unavailable: z.boolean().default(true), startsAtLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), endsAtLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), reason: z.string().trim().max(300).optional() }).refine((value) => value.unavailable || Boolean(value.startsAtLocal && value.endsAtLocal && value.startsAtLocal < value.endsAtLocal), { message: 'Available exceptions require a valid time range.' });
+export const updateScheduleExceptionSchema = z.object({ exceptionDate: z.iso.date().optional(), unavailable: z.boolean().optional(), startsAtLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), endsAtLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(), reason: z.string().trim().max(300).optional() }).refine((value) => Object.keys(value).length > 0, { message: 'At least one exception field is required.' });
+export const createTimeOffSchema = z.object({ dentistId: uuidSchema, startsAt: z.iso.datetime({ offset: true }), endsAt: z.iso.datetime({ offset: true }), reason: z.string().trim().max(300).optional() }).refine((value) => value.startsAt < value.endsAt, { message: 'Time off start must precede end.' });
+export const updateTimeOffSchema = z.object({ startsAt: z.iso.datetime({ offset: true }).optional(), endsAt: z.iso.datetime({ offset: true }).optional(), reason: z.string().trim().max(300).optional() }).refine((value) => Object.keys(value).length > 0, { message: 'At least one time-off field is required.' });
 export const createPatientSchema = z.object({
   displayName: z.string().trim().min(2).max(120), email: z.string().trim().toLowerCase().email().max(254).optional(),
   phone: z.string().trim().min(7).max(32).optional()
@@ -104,5 +109,10 @@ export type UpdateDentistInput = z.infer<typeof updateDentistSchema>;
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;
 export type UpdateServiceInput = z.infer<typeof updateServiceSchema>;
 export type CreateScheduleInput = z.infer<typeof createScheduleSchema>;
+export type UpdateScheduleInput = z.infer<typeof updateScheduleSchema>;
+export type CreateScheduleExceptionInput = z.infer<typeof createScheduleExceptionSchema>;
+export type UpdateScheduleExceptionInput = z.infer<typeof updateScheduleExceptionSchema>;
+export type CreateTimeOffInput = z.infer<typeof createTimeOffSchema>;
+export type UpdateTimeOffInput = z.infer<typeof updateTimeOffSchema>;
 export type CreatePatientInput = z.infer<typeof createPatientSchema>;
 export type FileOwnerType = z.infer<typeof fileOwnerTypeSchema>;

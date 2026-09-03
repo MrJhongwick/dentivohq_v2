@@ -1,4 +1,5 @@
 import type { AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, FileOwnerType, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput, UpdateDentistInput, UpdateLocationInput, UpdateServiceInput } from '@dentivohq/validation';
+import type { CreateScheduleExceptionInput, CreateTimeOffInput, UpdateScheduleExceptionInput, UpdateScheduleInput, UpdateTimeOffInput } from '@dentivohq/validation';
 import type { AppointmentRecord, ClinicMembership } from './types';
 import type { Database } from './client';
 
@@ -210,6 +211,31 @@ export async function createSchedule(db: Database, clinicId: string, userId: str
   `;
   return rows[0];
 }
+
+export async function listSchedulingRules(db: Database, clinicId: string) {
+  const [schedules, exceptions, timeOff] = await db.transaction((tx) => [
+    tx`select * from dentist_schedules where clinic_id = ${clinicId} order by day_of_week, starts_at_local`,
+    tx`select * from dentist_schedule_exceptions where clinic_id = ${clinicId} order by exception_date desc`,
+    tx`select * from dentist_time_off where clinic_id = ${clinicId} order by starts_at desc`
+  ], { readOnly: true });
+  return { schedules, exceptions, timeOff };
+}
+
+export async function updateSchedule(db: Database, clinicId: string, id: string, input: UpdateScheduleInput) {
+  const rows = await db`update dentist_schedules set dentist_id = coalesce(${input.dentistId ?? null}, dentist_id), location_id = coalesce(${input.locationId ?? null}, location_id), day_of_week = coalesce(${input.dayOfWeek ?? null}, day_of_week), starts_at_local = coalesce(${input.startsAtLocal ?? null}::time, starts_at_local), ends_at_local = coalesce(${input.endsAtLocal ?? null}::time, ends_at_local), effective_from = coalesce(${input.effectiveFrom ?? null}::date, effective_from), effective_to = coalesce(${input.effectiveTo ?? null}::date, effective_to) where clinic_id = ${clinicId} and id = ${id} returning *`;
+  return rows[0] ?? null;
+}
+export async function deleteSchedule(db: Database, clinicId: string, id: string) { const rows = await db`delete from dentist_schedules where clinic_id = ${clinicId} and id = ${id} returning id`; return Boolean(rows[0]); }
+
+export async function createScheduleException(db: Database, clinicId: string, input: CreateScheduleExceptionInput) {
+  const rows = await db`insert into dentist_schedule_exceptions(clinic_id, dentist_id, location_id, exception_date, unavailable, starts_at_local, ends_at_local, reason) values(${clinicId}, ${input.dentistId}, ${input.locationId}, ${input.exceptionDate}::date, ${input.unavailable}, ${input.startsAtLocal ?? null}::time, ${input.endsAtLocal ?? null}::time, ${input.reason ?? null}) returning *`; return rows[0];
+}
+export async function updateScheduleException(db: Database, clinicId: string, id: string, input: UpdateScheduleExceptionInput) { const rows = await db`update dentist_schedule_exceptions set exception_date = coalesce(${input.exceptionDate ?? null}::date, exception_date), unavailable = coalesce(${input.unavailable ?? null}, unavailable), starts_at_local = coalesce(${input.startsAtLocal ?? null}::time, starts_at_local), ends_at_local = coalesce(${input.endsAtLocal ?? null}::time, ends_at_local), reason = coalesce(${input.reason ?? null}, reason) where clinic_id = ${clinicId} and id = ${id} returning *`; return rows[0] ?? null; }
+export async function deleteScheduleException(db: Database, clinicId: string, id: string) { const rows = await db`delete from dentist_schedule_exceptions where clinic_id = ${clinicId} and id = ${id} returning id`; return Boolean(rows[0]); }
+
+export async function createTimeOff(db: Database, clinicId: string, input: CreateTimeOffInput) { const rows = await db`insert into dentist_time_off(clinic_id, dentist_id, starts_at, ends_at, reason) values(${clinicId}, ${input.dentistId}, ${input.startsAt}::timestamptz, ${input.endsAt}::timestamptz, ${input.reason ?? null}) returning *`; return rows[0]; }
+export async function updateTimeOff(db: Database, clinicId: string, id: string, input: UpdateTimeOffInput) { const rows = await db`update dentist_time_off set starts_at = coalesce(${input.startsAt ?? null}::timestamptz, starts_at), ends_at = coalesce(${input.endsAt ?? null}::timestamptz, ends_at), reason = coalesce(${input.reason ?? null}, reason) where clinic_id = ${clinicId} and id = ${id} returning *`; return rows[0] ?? null; }
+export async function deleteTimeOff(db: Database, clinicId: string, id: string) { const rows = await db`delete from dentist_time_off where clinic_id = ${clinicId} and id = ${id} returning id`; return Boolean(rows[0]); }
 
 export async function createPatient(db: Database, clinicId: string, userId: string, input: CreatePatientInput) {
   const rows = await db`

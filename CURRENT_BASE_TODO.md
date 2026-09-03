@@ -101,7 +101,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: Only active and correctly configured services can be offered for booking.
   - Evidence: A service creation endpoint exists, but no management screen or update route exists.
 
-- [ ] **OPS-004 · P0 — Build schedule, exception, and time-off management**
+- [x] **OPS-004 · P0 — Build schedule, exception, and time-off management**
   - Add list, create, update, and remove APIs and UI for recurring schedules, schedule exceptions, and time off.
   - Acceptance: Staff can manage and inspect every availability input through the dashboard.
   - Evidence: `dentist_schedule_exceptions` and `dentist_time_off` exist in the schema without operational endpoints.
