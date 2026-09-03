@@ -47,3 +47,17 @@ test('verified user can create a clinic and proceed through initial location set
   await page.getByRole('button', { name: 'Finish setup' }).click();
   await expect(page).toHaveURL(/\/dashboard-preview$/);
 });
+
+test('invited staff can accept an invitation once and continue to their clinic', async ({ page }) => {
+  const clinicId = '18cb5f8f-251f-4e47-83fe-d881ba0f318f';
+  let acceptCalls = 0;
+  await page.route('**/api/v1/invitations/accept', async (route) => {
+    acceptCalls += 1;
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { clinicId } }) });
+  });
+  await page.route('**/api/v1/clinics', async (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: [{ id: clinicId, name: 'Harbor Dental', slug: 'harbor-dental', role: 'RECEPTIONIST' }] }) }));
+  await page.goto(`http://127.0.0.1:5173/accept-invitation-preview?token=${'a'.repeat(64)}`);
+  await expect(page.getByRole('heading', { name: 'Invitation accepted' })).toBeVisible();
+  await expect(page.getByText('You now have access to Harbor Dental.')).toBeVisible();
+  expect(acceptCalls).toBe(1);
+});

@@ -91,7 +91,8 @@ export async function acceptStaffInvitation(db: Database, userId: string, userEm
       select clinic_id, ${userId}, 'STAFF_INVITATION_ACCEPTED', 'clinic_member', id::text from member
     ) select * from member
   `;
-  return rows[0] ?? null;
+  const row = rows[0];
+  return row ? { id: String(row.id), clinicId: String(row.clinic_id), role: String(row.role) } : null;
 }
 
 export async function assignDentistLocation(db: Database, clinicId: string, dentistId: string, locationId: string) {

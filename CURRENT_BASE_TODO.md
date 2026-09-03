@@ -64,7 +64,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: A verified user can create a clinic and immediately proceed to location setup.
   - Evidence: The API supports clinic creation, but `apps/dashboard/src/components/dashboard-app.tsx` exposes only an empty state.
 
-- [ ] **AUTH-002 · P0 — Complete the invitation acceptance UI**
+- [x] **AUTH-002 · P0 — Complete the invitation acceptance UI**
   - Add the `/accept-invitation` dashboard route and connect it to the invitation acceptance API.
   - Acceptance: Invited staff can authenticate, accept a valid invitation once, and see only the invited clinic.
   - Evidence: Invitation emails generated in `apps/api/src/index.ts` point to a route that the dashboard does not implement.

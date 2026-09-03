@@ -2,7 +2,7 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } fro
 import { useState, type FormEvent } from 'react';
 import { authClient } from '../lib/auth-client';
 
-export function AuthPanel() {
+export function AuthPanel({ description = 'Secure access for clinic team members.' }: { description?: string }) {
   const [mode, setMode] = useState<'sign-in' | 'register'>('sign-in');
   const [message, setMessage] = useState('');
 
@@ -20,7 +20,7 @@ export function AuthPanel() {
 
   return <main className="mx-auto flex min-h-screen max-w-md items-center px-5">
     <Card className="w-full">
-      <CardHeader><CardTitle>{mode === 'sign-in' ? 'Sign in to DentivoHQ' : 'Create your DentivoHQ account'}</CardTitle><CardDescription>Secure access for clinic team members.</CardDescription></CardHeader>
+      <CardHeader><CardTitle>{mode === 'sign-in' ? 'Sign in to DentivoHQ' : 'Create your DentivoHQ account'}</CardTitle><CardDescription>{description}</CardDescription></CardHeader>
       <CardContent>
         <form className="flex flex-col gap-4" onSubmit={submit}>
           {mode === 'register' ? <label className="flex flex-col gap-1.5 text-sm font-semibold">Name<input className="h-10 rounded-lg border border-border bg-background px-3 font-normal" name="name" required /></label> : null}
