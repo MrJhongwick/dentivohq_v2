@@ -458,12 +458,34 @@ export async function getPublicBookingConfig(db: Database, clinicSlug: string) {
   const clinics = await db`select id, name, slug from clinics where slug = ${clinicSlug} and status = 'ACTIVE' limit 1`;
   const clinic = clinics[0];
   if (!clinic) return null;
-  const [locations, services, dentists] = await db.transaction((tx) => [
+  const [locations, services, dentists, combinations] = await db.transaction((tx) => [
     tx`select id, name, timezone from clinic_locations where clinic_id = ${clinic.id} and active = true order by name`,
     tx`select id, name, duration_minutes from services where clinic_id = ${clinic.id} and active = true order by name`,
-    tx`select id, display_name from dentists where clinic_id = ${clinic.id} and active = true order by display_name`
+    tx`select id, display_name from dentists where clinic_id = ${clinic.id} and active = true order by display_name`,
+    tx`select distinct dla.location_id, d.id as dentist_id, ds.service_id
+       from dentists d
+       join dentist_location_assignments dla on dla.clinic_id = d.clinic_id and dla.dentist_id = d.id
+       join clinic_locations cl on cl.clinic_id = dla.clinic_id and cl.id = dla.location_id and cl.active
+       join dentist_services ds on ds.clinic_id = d.clinic_id and ds.dentist_id = d.id
+       join services s on s.clinic_id = ds.clinic_id and s.id = ds.service_id and s.active
+       where d.clinic_id = ${clinic.id} and d.active
+         and (exists (select 1 from dentist_schedules schedule where schedule.clinic_id = d.clinic_id and schedule.dentist_id = d.id and schedule.location_id = cl.id)
+           or exists (select 1 from dentist_schedule_exceptions exception where exception.clinic_id = d.clinic_id and exception.dentist_id = d.id and exception.location_id = cl.id and not exception.unavailable and exception.exception_date >= current_date))`
   ], { readOnly: true });
-  return { clinic, locations, services, dentists };
+  const locationRows = locations ?? [];
+  const serviceRows = services ?? [];
+  const dentistRows = dentists ?? [];
+  const combinationRows = combinations ?? [];
+  const validLocationIds = new Set(combinationRows.map((row) => String(row.location_id)));
+  const validDentistIds = new Set(combinationRows.map((row) => String(row.dentist_id)));
+  const validServiceIds = new Set(combinationRows.map((row) => String(row.service_id)));
+  return {
+    clinic,
+    locations: locationRows.filter((row) => validLocationIds.has(String(row.id))),
+    services: serviceRows.filter((row) => validServiceIds.has(String(row.id))),
+    dentists: dentistRows.filter((row) => validDentistIds.has(String(row.id))),
+    combinations: combinationRows.map((row) => ({ locationId: String(row.location_id), dentistId: String(row.dentist_id), serviceId: String(row.service_id) }))
+  };
 }
 
 export async function createPublicAppointment(db: Database, clinicSlug: string, input: PublicBookingInput, idempotencyKey: string) {
