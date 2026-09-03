@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const uuidSchema = z.string().uuid();
+export const idempotencyKeySchema = z.string().trim().min(8).max(128).regex(/^[A-Za-z0-9._:-]+$/);
 export const clinicIdParamSchema = z.object({ clinicId: uuidSchema });
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

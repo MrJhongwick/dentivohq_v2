@@ -293,11 +293,11 @@ export async function getClinicDashboardOverview(db: Database, clinicId: string)
   };
 }
 
-export async function createAppointment(db: Database, actorUserId: string, clinicId: string, input: CreateAppointmentInput) {
+export async function createAppointment(db: Database, actorUserId: string, clinicId: string, input: CreateAppointmentInput, idempotencyKey: string) {
   const rows = await db`
-    select * from book_clinic_appointment(
+    select * from idempotent_book_clinic_appointment(
       ${actorUserId}, ${clinicId}, ${input.locationId}, ${input.dentistId}, ${input.clinicPatientId},
-      ${input.serviceId}, ${input.startsAt}::timestamptz, ${input.notes ?? null}
+      ${input.serviceId}, ${input.startsAt}::timestamptz, ${input.notes ?? null}, ${idempotencyKey}
     )
   `;
   return mapAppointment(rows[0] as Record<string, unknown>);
@@ -317,8 +317,8 @@ export async function updateAppointmentStatus(db: Database, actorUserId: string,
   return rows[0] ? mapAppointment(rows[0] as Record<string, unknown>) : null;
 }
 
-export async function rescheduleAppointment(db: Database, actorUserId: string, clinicId: string, appointmentId: string, input: RescheduleAppointmentInput) {
-  const rows = await db`select * from reschedule_appointment(${actorUserId}, ${clinicId}, ${appointmentId}, ${input.startsAt}::timestamptz)`;
+export async function rescheduleAppointment(db: Database, actorUserId: string, clinicId: string, appointmentId: string, input: RescheduleAppointmentInput, idempotencyKey: string) {
+  const rows = await db`select * from idempotent_reschedule_appointment(${actorUserId}, ${clinicId}, ${appointmentId}, ${input.startsAt}::timestamptz, ${idempotencyKey})`;
   return rows[0] ? mapAppointment(rows[0] as Record<string, unknown>) : null;
 }
 
@@ -334,11 +334,11 @@ export async function getPublicBookingConfig(db: Database, clinicSlug: string) {
   return { clinic, locations, services, dentists };
 }
 
-export async function createPublicAppointment(db: Database, clinicSlug: string, input: PublicBookingInput) {
+export async function createPublicAppointment(db: Database, clinicSlug: string, input: PublicBookingInput, idempotencyKey: string) {
   const rows = await db`
-    select * from book_public_appointment(
+    select * from idempotent_book_public_appointment(
       ${clinicSlug}, ${input.locationId}, ${input.dentistId}, ${input.serviceId}, ${input.startsAt}::timestamptz,
-      ${input.patient.name}, ${input.patient.email}, ${input.patient.phone}
+      ${input.patient.name}, ${input.patient.email}, ${input.patient.phone}, ${idempotencyKey}
     )
   `;
   return mapAppointment(rows[0] as Record<string, unknown>);

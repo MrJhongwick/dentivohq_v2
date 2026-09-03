@@ -129,10 +129,11 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Status: Complete. The status endpoint dynamically authorizes cancellation separately from other appointment updates.
   - Evidence: `permissionForAppointmentStatus()` maps `CANCELLED` to `appointment.cancel`, and its permission test proves a dentist can update an appointment but cannot cancel one.
 
-- [ ] **SCH-004 · P0 — Add booking idempotency**
+- [x] **SCH-004 · P0 — Add booking idempotency**
   - Add clinic-scoped idempotency keys to staff booking, public booking, and rescheduling.
   - Acceptance: Retrying a completed request returns the original result without creating a duplicate or misleading conflict.
-  - Evidence: Booking currently relies only on PostgreSQL exclusion conflicts.
+  - Status: Complete. Staff booking, public booking, and rescheduling require clinic-scoped idempotency keys and serialize matching requests in PostgreSQL.
+  - Evidence: `0005_booking_idempotency.sql` stores request fingerprints and original appointment IDs; matching retries return the original result while mismatched reuse is rejected.
 
 - [ ] **SCH-005 · P0 — Fix cross-clinic patient identity mutation risk**
   - Define the intended cross-clinic patient identity model and prevent anonymous public booking from overwriting another clinic's shared patient identity data.

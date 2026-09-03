@@ -9,7 +9,7 @@ import {
 import {
   acceptInvitationSchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
   createLocationSchema, createPatientSchema, createScheduleSchema, createServiceSchema, inviteStaffSchema,
-  dentistAssignmentSchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, uuidSchema
+  dentistAssignmentSchema, idempotencyKeySchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, uuidSchema
 } from '@dentivohq/validation';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
@@ -41,7 +41,7 @@ app.use('*', async (c, next) => {
 app.use('*', cors({
   origin: (origin, c) => c.get('runtime').CORS_ORIGINS.includes(origin) ? origin : '',
   credentials: true,
-  allowHeaders: ['Content-Type', 'Authorization'],
+  allowHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
   allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']
 }));
 
@@ -72,6 +72,10 @@ async function enforcePublicRateLimit(c: AppContext) {
   const key = `booking:${c.req.param('clinicSlug') ?? 'unknown'}`;
   const { success } = await c.env.PUBLIC_BOOKING_RATE_LIMIT.limit({ key });
   if (!success) throw new AppError(429, 'RATE_LIMITED', 'Too many booking requests. Please try again shortly.');
+}
+
+function getIdempotencyKey(c: AppContext) {
+  return idempotencyKeySchema.parse(c.req.header('Idempotency-Key'));
 }
 
 app.get('/', (c) => c.json({ data: { name: 'DentivoHQ API', status: 'ok' } }));
@@ -161,7 +165,7 @@ app.get('/api/v1/clinics/:clinicId/dashboard', requireSession, requireClinicPerm
 app.post('/api/v1/clinics/:clinicId/appointments', requireSession, requireClinicPermission('appointment.create'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const body = createAppointmentSchema.parse(await c.req.json());
-  return c.json({ data: await createAppointment(c.get('db'), c.get('authSession').user.id, clinicId, body) }, 201);
+  return c.json({ data: await createAppointment(c.get('db'), c.get('authSession').user.id, clinicId, body, getIdempotencyKey(c)) }, 201);
 });
 
 app.get('/api/v1/clinics/:clinicId/availability', requireSession, requireClinicPermission('appointment.read'), async (c) => {
@@ -183,7 +187,7 @@ app.post('/api/v1/clinics/:clinicId/appointments/:appointmentId/reschedule', req
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const appointmentId = uuidSchema.parse(c.req.param('appointmentId'));
   const body = rescheduleAppointmentSchema.parse(await c.req.json());
-  const appointment = await rescheduleAppointment(c.get('db'), c.get('authSession').user.id, clinicId, appointmentId, body);
+  const appointment = await rescheduleAppointment(c.get('db'), c.get('authSession').user.id, clinicId, appointmentId, body, getIdempotencyKey(c));
   if (!appointment) throw new AppError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
   return c.json({ data: appointment }, 201);
 });
@@ -203,7 +207,7 @@ app.get('/api/v1/public/clinics/:clinicSlug/availability', async (c) => {
 
 app.post('/api/v1/public/clinics/:clinicSlug/appointments', async (c) => {
   await enforcePublicRateLimit(c);
-  const appointment = await createPublicAppointment(c.get('db'), c.req.param('clinicSlug'), publicBookingSchema.parse(await c.req.json()));
+  const appointment = await createPublicAppointment(c.get('db'), c.req.param('clinicSlug'), publicBookingSchema.parse(await c.req.json()), getIdempotencyKey(c));
   return c.json({ data: { id: appointment.id, startsAt: appointment.startsAt, endsAt: appointment.endsAt, status: appointment.status } }, 201);
 });
 

@@ -1,5 +1,5 @@
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@dentivohq/ui';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { apiRequest } from '../lib/api';
 
 type Option = { id: string; name?: string; display_name?: string };
@@ -13,6 +13,7 @@ export function PublicBooking({ clinicSlug }: { clinicSlug: string }) {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [selection, setSelection] = useState<Selection>({ locationId: '', dentistId: '', serviceId: '', date: '', startsAt: '' });
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const bookingAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
   useEffect(() => { void apiRequest<{ data: Config }>(`/api/v1/public/clinics/${clinicSlug}/booking-config`).then((result) => { setConfig(result.data); setMessage(''); }).catch((error: Error) => setMessage(error.message)); }, [clinicSlug]);
 
   function select(field: keyof Selection, value: string) {
@@ -42,11 +43,17 @@ export function PublicBooking({ clinicSlug }: { clinicSlug: string }) {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const payload = {
+      locationId: selection.locationId, dentistId: selection.dentistId, serviceId: selection.serviceId, startsAt: selection.startsAt,
+      patient: { name: form.get('name'), email: form.get('email'), phone: form.get('phone') }
+    };
+    const fingerprint = JSON.stringify(payload);
+    if (bookingAttempt.current?.fingerprint !== fingerprint) bookingAttempt.current = { fingerprint, key: crypto.randomUUID() };
     try {
-      await apiRequest(`/api/v1/public/clinics/${clinicSlug}/appointments`, { method: 'POST', body: JSON.stringify({
-        locationId: selection.locationId, dentistId: selection.dentistId, serviceId: selection.serviceId, startsAt: selection.startsAt,
-        patient: { name: form.get('name'), email: form.get('email'), phone: form.get('phone') }
-      }) });
+      await apiRequest(`/api/v1/public/clinics/${clinicSlug}/appointments`, {
+        method: 'POST', headers: { 'Idempotency-Key': bookingAttempt.current.key }, body: JSON.stringify(payload)
+      });
+      bookingAttempt.current = null;
       setMessage('Your appointment request is confirmed. Check your email for details.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to book this appointment.'); }
   }
