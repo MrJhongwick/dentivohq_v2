@@ -123,10 +123,11 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: The complete staff booking journey uses the existing protected scheduling APIs.
   - Evidence: Appointment APIs exist, but the staff-facing workflow is absent.
 
-- [ ] **SCH-003 · P0 — Enforce the appointment cancellation permission**
+- [x] **SCH-003 · P0 — Enforce the appointment cancellation permission**
   - Separate cancellation from generic status updates or dynamically require `appointment.cancel` when the requested status is `CANCELLED`.
   - Acceptance: A role with `appointment.update` but without `appointment.cancel` cannot cancel an appointment.
-  - Evidence: The current status endpoint accepts `CANCELLED` while requiring only `appointment.update`.
+  - Status: Complete. The status endpoint dynamically authorizes cancellation separately from other appointment updates.
+  - Evidence: `permissionForAppointmentStatus()` maps `CANCELLED` to `appointment.cancel`, and its permission test proves a dentist can update an appointment but cannot cancel one.
 
 - [ ] **SCH-004 · P0 — Add booking idempotency**
   - Add clinic-scoped idempotency keys to staff booking, public booking, and rescheduling.

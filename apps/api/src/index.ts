@@ -1,4 +1,4 @@
-import { createAuth, resolveAuthorizedMembership, type DentivoAuth, type Permission } from '@dentivohq/auth';
+import { createAuth, permissionForAppointmentStatus, resolveAuthorizedMembership, type DentivoAuth, type Permission } from '@dentivohq/auth';
 import { parseServerEnv, type ServerEnv } from '@dentivohq/config';
 import {
   acceptStaffInvitation, assignDentistLocation, assignDentistService, createAppointment, createClinic, createDatabase, createDentist, createFileMetadata, createLocation, createPatient,
@@ -60,6 +60,12 @@ function requireClinicPermission(permission: Permission): MiddlewareHandler<{ Bi
     if (!membership) throw new AppError(403, 'CLINIC_ACCESS_DENIED', 'You do not have access to this clinic.');
     await next();
   };
+}
+
+async function assertClinicPermission(c: AppContext, clinicId: string, permission: Permission) {
+  const session = c.get('authSession');
+  const membership = await resolveAuthorizedMembership(c.get('db'), session.user.id, clinicId, permission);
+  if (!membership) throw new AppError(403, 'CLINIC_ACCESS_DENIED', 'You do not have access to this clinic.');
 }
 
 async function enforcePublicRateLimit(c: AppContext) {
@@ -163,10 +169,11 @@ app.get('/api/v1/clinics/:clinicId/availability', requireSession, requireClinicP
   return c.json({ data: await listAvailability(c.get('db'), clinicId, availabilityQuerySchema.parse(c.req.query())) });
 });
 
-app.patch('/api/v1/clinics/:clinicId/appointments/:appointmentId/status', requireSession, requireClinicPermission('appointment.update'), async (c) => {
+app.patch('/api/v1/clinics/:clinicId/appointments/:appointmentId/status', requireSession, async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const appointmentId = uuidSchema.parse(c.req.param('appointmentId'));
   const body = updateAppointmentStatusSchema.parse(await c.req.json());
+  await assertClinicPermission(c, clinicId, permissionForAppointmentStatus(body.status));
   const appointment = await updateAppointmentStatus(c.get('db'), c.get('authSession').user.id, clinicId, appointmentId, body.status);
   if (!appointment) throw new AppError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
   return c.json({ data: appointment });

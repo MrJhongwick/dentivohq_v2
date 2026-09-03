@@ -1,4 +1,4 @@
-import { findActiveMembership, type ClinicMembership, type ClinicRole, type Database } from '@dentivohq/db';
+import { findActiveMembership, type AppointmentStatus, type ClinicMembership, type ClinicRole, type Database } from '@dentivohq/db';
 
 export const permissions = [
   'appointment.read', 'appointment.create', 'appointment.update', 'appointment.cancel',
@@ -18,6 +18,10 @@ const rolePermissions: Record<ClinicRole, ReadonlySet<Permission>> = {
 
 export function roleHasPermission(role: ClinicRole, permission: Permission): boolean {
   return rolePermissions[role].has(permission);
+}
+
+export function permissionForAppointmentStatus(status: AppointmentStatus): Permission {
+  return status === 'CANCELLED' ? 'appointment.cancel' : 'appointment.update';
 }
 
 export async function resolveAuthorizedMembership(db: Database, userId: string, clinicId: string, permission: Permission): Promise<ClinicMembership | null> {
