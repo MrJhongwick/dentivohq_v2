@@ -79,7 +79,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: Every Better Auth lifecycle state has a deterministic user-facing result and recovery path.
   - Evidence: The Better Auth server behavior exists, but the dashboard has only sign-in and registration UI.
 
-- [ ] **AUTH-005 · P1 — Test real authentication and membership boundaries**
+- [x] **AUTH-005 · P1 — Test real authentication and membership boundaries**
   - Add API integration tests for unauthenticated, suspended, removed, wrong-clinic, and wrong-role requests.
   - Acceptance: Every protected route family proves both allowed and denied access cases.
   - Evidence: Current permission coverage consists of three role-mapping unit tests.
