@@ -4,13 +4,13 @@ import {
   abandonFileMetadata, acceptStaffInvitation, activateFileMetadata, assignDentistLocation, assignDentistService, beginFileDeletion,
   createAppointment, createClinic, createDatabase, createDentist, createLocation, createPatient, createScheduleException, createTimeOff,
   createPublicAppointment, createSchedule, createService, createStaffInvitation, deleteSchedule, deleteScheduleException, deleteTimeOff, finalizeFileDeletion,
-  fileOwnerBelongsToClinic, findFileMetadata, getClinicDashboardOverview, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
-  listDentists, listLocations, listSchedulingRules, listServices, listUserClinics, reserveFileMetadata, rescheduleAppointment, unassignDentistLocation, unassignDentistService, updateAppointmentStatus, updateDentist, updateLocation, updateSchedule, updateScheduleException, updateService, updateTimeOff, type Database
+  fileOwnerBelongsToClinic, findFileMetadata, getClinicDashboardOverview, getPatient, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
+  listDentists, listLocations, listPatients, listSchedulingRules, listServices, listUserClinics, reserveFileMetadata, rescheduleAppointment, unassignDentistLocation, unassignDentistService, updateAppointmentStatus, updateDentist, updateLocation, updatePatient, updateSchedule, updateScheduleException, updateService, updateTimeOff, type Database
 } from '@dentivohq/db';
 import {
   acceptInvitationSchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
   createLocationSchema, createPatientSchema, createScheduleExceptionSchema, createScheduleSchema, createServiceSchema, createTimeOffSchema, inviteStaffSchema,
-  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateDentistSchema, updateLocationSchema, updateScheduleExceptionSchema, updateScheduleSchema, updateServiceSchema, updateTimeOffSchema, uuidSchema
+  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, patientListQuerySchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateDentistSchema, updateLocationSchema, updatePatientSchema, updateScheduleExceptionSchema, updateScheduleSchema, updateServiceSchema, updateTimeOffSchema, uuidSchema
 } from '@dentivohq/validation';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
@@ -212,6 +212,10 @@ app.post('/api/v1/clinics/:clinicId/patients', requireSession, requireClinicPerm
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   return c.json({ data: await createPatient(c.get('db'), clinicId, c.get('authSession').user.id, createPatientSchema.parse(await c.req.json())) }, 201);
 });
+
+app.get('/api/v1/clinics/:clinicId/patients', requireSession, requireClinicPermission('patient.read'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const { page, pageSize, query } = patientListQuerySchema.parse(c.req.query()); const result = await listPatients(c.get('db'), clinicId, query, page, pageSize); return c.json({ data: result.data, meta: { page, pageSize, total: result.total } }); });
+app.get('/api/v1/clinics/:clinicId/patients/:patientId', requireSession, requireClinicPermission('patient.read'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await getPatient(c.get('db'), clinicId, uuidSchema.parse(c.req.param('patientId'))); if (!data) throw new AppError(404, 'PATIENT_NOT_FOUND', 'Patient not found.'); return c.json({ data }); });
+app.patch('/api/v1/clinics/:clinicId/patients/:patientId', requireSession, requireClinicPermission('patient.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await updatePatient(c.get('db'), clinicId, uuidSchema.parse(c.req.param('patientId')), c.get('authSession').user.id, updatePatientSchema.parse(await c.req.json())); if (!data) throw new AppError(404, 'PATIENT_NOT_FOUND', 'Patient not found.'); return c.json({ data }); });
 
 app.get('/api/v1/clinics/:clinicId/appointments', requireSession, requireClinicPermission('appointment.read'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());

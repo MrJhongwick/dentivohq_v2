@@ -92,6 +92,8 @@ export const createPatientSchema = z.object({
   displayName: z.string().trim().min(2).max(120), email: z.string().trim().toLowerCase().email().max(254).optional(),
   phone: z.string().trim().min(7).max(32).optional()
 });
+export const updatePatientSchema = createPatientSchema.partial().extend({ active: z.boolean().optional() }).refine((value) => Object.keys(value).length > 0, { message: 'At least one patient field is required.' });
+export const patientListQuerySchema = paginationSchema.extend({ query: z.string().trim().max(120).default('') });
 export const acceptInvitationSchema = z.object({ token: z.string().regex(/^[a-f0-9]{64}$/) });
 export const dentistAssignmentSchema = z.object({ dentistId: uuidSchema, locationId: uuidSchema.optional(), serviceId: uuidSchema.optional() });
 
@@ -115,4 +117,5 @@ export type UpdateScheduleExceptionInput = z.infer<typeof updateScheduleExceptio
 export type CreateTimeOffInput = z.infer<typeof createTimeOffSchema>;
 export type UpdateTimeOffInput = z.infer<typeof updateTimeOffSchema>;
 export type CreatePatientInput = z.infer<typeof createPatientSchema>;
+export type UpdatePatientInput = z.infer<typeof updatePatientSchema>;
 export type FileOwnerType = z.infer<typeof fileOwnerTypeSchema>;

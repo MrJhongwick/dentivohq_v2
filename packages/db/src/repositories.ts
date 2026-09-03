@@ -1,5 +1,6 @@
 import type { AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, FileOwnerType, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput, UpdateDentistInput, UpdateLocationInput, UpdateServiceInput } from '@dentivohq/validation';
 import type { CreateScheduleExceptionInput, CreateTimeOffInput, UpdateScheduleExceptionInput, UpdateScheduleInput, UpdateTimeOffInput } from '@dentivohq/validation';
+import type { UpdatePatientInput } from '@dentivohq/validation';
 import type { AppointmentRecord, ClinicMembership } from './types';
 import type { Database } from './client';
 
@@ -252,6 +253,28 @@ export async function createPatient(db: Database, clinicId: string, userId: stri
     ) select clinic_patient.id, profile.display_name, profile.email, profile.phone from clinic_patient join profile on profile.id = clinic_patient.patient_profile_id
   `;
   return rows[0];
+}
+
+export async function listPatients(db: Database, clinicId: string, query: string, page: number, pageSize: number) {
+  const pattern = `%${query}%`; const offset = (page - 1) * pageSize;
+  const [rows, counts] = await db.transaction((tx) => [
+    tx`select cp.id, cp.active, cp.external_reference, pp.display_name, pp.email, pp.phone, cp.created_at from clinic_patients cp join patient_profiles pp on pp.id = cp.patient_profile_id and pp.clinic_id = cp.clinic_id where cp.clinic_id = ${clinicId} and (${query} = '' or pp.display_name ilike ${pattern} or pp.email::text ilike ${pattern} or pp.phone ilike ${pattern}) order by cp.active desc, pp.display_name limit ${pageSize} offset ${offset}`,
+    tx`select count(*)::int as total from clinic_patients cp join patient_profiles pp on pp.id = cp.patient_profile_id and pp.clinic_id = cp.clinic_id where cp.clinic_id = ${clinicId} and (${query} = '' or pp.display_name ilike ${pattern} or pp.email::text ilike ${pattern} or pp.phone ilike ${pattern})`
+  ], { readOnly: true });
+  return { data: rows ?? [], total: Number(counts?.[0]?.total ?? 0) };
+}
+
+export async function getPatient(db: Database, clinicId: string, patientId: string) { const rows = await db`select cp.id, cp.active, cp.external_reference, pp.display_name, pp.email, pp.phone, cp.created_at from clinic_patients cp join patient_profiles pp on pp.id = cp.patient_profile_id and pp.clinic_id = cp.clinic_id where cp.clinic_id = ${clinicId} and cp.id = ${patientId} limit 1`; return rows[0] ?? null; }
+
+export async function updatePatient(db: Database, clinicId: string, patientId: string, userId: string, input: UpdatePatientInput) {
+  const rows = await db`
+    with target as (select patient_profile_id from clinic_patients where clinic_id = ${clinicId} and id = ${patientId}),
+    profile as (update patient_profiles set display_name = coalesce(${input.displayName ?? null}, display_name), email = coalesce(${input.email ?? null}, email), phone = coalesce(${input.phone ?? null}, phone) where clinic_id = ${clinicId} and id in (select patient_profile_id from target) returning id),
+    patient as (update clinic_patients set active = coalesce(${input.active ?? null}, active) where clinic_id = ${clinicId} and id = ${patientId} returning *),
+    audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) select ${clinicId}, ${userId}, case when active then 'PATIENT_UPDATED' else 'PATIENT_ARCHIVED' end, 'clinic_patient', id::text from patient)
+    select patient.id from patient
+  `;
+  return rows[0] ? getPatient(db, clinicId, patientId) : null;
 }
 
 export async function listAppointments(db: Database, clinicId: string, page: number, pageSize: number) {

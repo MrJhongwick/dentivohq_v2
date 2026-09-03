@@ -106,7 +106,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: Staff can manage and inspect every availability input through the dashboard.
   - Evidence: `dentist_schedule_exceptions` and `dentist_time_off` exist in the schema without operational endpoints.
 
-- [ ] **OPS-005 · P0 — Complete patient management**
+- [x] **OPS-005 · P0 — Complete patient management**
   - Add tenant-scoped patient list, search, details, update, archive, deduplication, and pagination.
   - Acceptance: Staff can reliably find or create a patient before booking.
   - Evidence: A patient creation endpoint exists, but there are no patient list or search routes.
