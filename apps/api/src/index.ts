@@ -19,6 +19,7 @@ import { AppError, normalizeError } from './errors';
 import { createEmailSender } from './services/email';
 import { reconcileFileStorage } from './services/files';
 import { processNotificationJobs } from './services/notifications';
+import { privateFileHeaders, requirePrivateObject, validatePrivateUpload } from './services/private-files';
 
 type AuthSession = Awaited<ReturnType<DentivoAuth['api']['getSession']>>;
 type Variables = { runtime: ServerEnv; db: Database; auth: DentivoAuth; authSession: NonNullable<AuthSession> };
@@ -298,14 +299,10 @@ app.post('/api/v1/public/clinics/:clinicSlug/appointments', async (c) => {
 
 app.post('/api/v1/clinics/:clinicId/files', requireSession, requireClinicPermission('patient.update'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
-  if (Number(c.req.header('content-length') ?? 0) > 10 * 1024 * 1024) throw new AppError(413, 'FILE_TOO_LARGE', 'Files must not exceed 10 MB.');
   const body = await c.req.parseBody();
-  const file = body.file;
+  const file = validatePrivateUpload(body.file, Number(c.req.header('content-length') ?? 0));
   const ownerId = uuidSchema.parse(body.ownerId);
   const ownerType = fileOwnerTypeSchema.parse(body.ownerType);
-  if (!(file instanceof File)) throw new AppError(400, 'FILE_REQUIRED', 'A file is required.');
-  if (file.size > 10 * 1024 * 1024) throw new AppError(413, 'FILE_TOO_LARGE', 'Files must not exceed 10 MB.');
-  if (!new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']).has(file.type)) throw new AppError(415, 'FILE_TYPE_NOT_ALLOWED', 'This file type is not allowed.');
   if (!await fileOwnerBelongsToClinic(c.get('db'), clinicId, ownerType, ownerId)) {
     throw new AppError(404, 'FILE_OWNER_NOT_FOUND', 'The file owner was not found in this clinic.');
   }
@@ -328,9 +325,8 @@ app.get('/api/v1/clinics/:clinicId/files/:fileId', requireSession, requireClinic
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const metadata = await findFileMetadata(c.get('db'), clinicId, uuidSchema.parse(c.req.param('fileId')));
   if (!metadata) throw new AppError(404, 'FILE_NOT_FOUND', 'File not found.');
-  const object = await c.env.UPLOADS.get(String(metadata.object_key));
-  if (!object) throw new AppError(404, 'FILE_NOT_FOUND', 'File not found.');
-  return new Response(object.body, { headers: { 'Content-Type': String(metadata.mime_type), 'Cache-Control': 'private, no-store', 'Content-Disposition': 'attachment' } });
+  const object = requirePrivateObject(await c.env.UPLOADS.get(String(metadata.object_key)));
+  return new Response(object.body, { headers: privateFileHeaders(String(metadata.mime_type)) });
 });
 
 app.delete('/api/v1/clinics/:clinicId/files/:fileId', requireSession, requireClinicPermission('patient.update'), async (c) => {
