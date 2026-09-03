@@ -113,7 +113,7 @@ export function DashboardApp({ user, preview }: Props) {
   if (clinic && workspace === 'services') return <ServiceManagement clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
   if (clinic && workspace === 'schedules') return <ScheduleManagement clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
   if (clinic && workspace === 'patients') return <PatientManagement clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
-  if (clinic && workspace === 'appointments') return <AppointmentWorkspace clinicId={clinic.id} onBook={() => window.location.assign(`/book/${clinic.slug}`)} onClose={() => setWorkspace('dashboard')} />;
+  if (clinic && workspace === 'appointments') return <AppointmentWorkspace clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
   return <div className="dashboard-shell min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[238px_minmax(0,1fr)]">
     <DashboardSidebar clinics={clinics} currentClinicId={currentClinicId} currentPlan={plan} onClinicChange={handleClinicChange} onClose={() => setMobileNavigationOpen(false)} onNavigate={handleAction} open={mobileNavigationOpen} />
     <div className="min-w-0">
