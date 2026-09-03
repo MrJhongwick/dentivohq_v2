@@ -3,13 +3,13 @@ import { parseServerEnv, type ServerEnv } from '@dentivohq/config';
 import {
   acceptStaffInvitation, assignDentistLocation, assignDentistService, createAppointment, createClinic, createDatabase, createDentist, createFileMetadata, createLocation, createPatient,
   createPublicAppointment, createSchedule, createService, createStaffInvitation, deleteFileMetadata,
-  findFileMetadata, getClinicDashboardOverview, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
+  fileOwnerBelongsToClinic, findFileMetadata, getClinicDashboardOverview, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
   listUserClinics, rescheduleAppointment, updateAppointmentStatus, type Database
 } from '@dentivohq/db';
 import {
   acceptInvitationSchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
   createLocationSchema, createPatientSchema, createScheduleSchema, createServiceSchema, inviteStaffSchema,
-  dentistAssignmentSchema, idempotencyKeySchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, uuidSchema
+  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, uuidSchema
 } from '@dentivohq/validation';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
@@ -217,12 +217,15 @@ app.post('/api/v1/clinics/:clinicId/files', requireSession, requireClinicPermiss
   const body = await c.req.parseBody();
   const file = body.file;
   const ownerId = uuidSchema.parse(body.ownerId);
-  const ownerType = String(body.ownerType ?? 'patient');
+  const ownerType = fileOwnerTypeSchema.parse(body.ownerType);
   if (!(file instanceof File)) throw new AppError(400, 'FILE_REQUIRED', 'A file is required.');
   if (file.size > 10 * 1024 * 1024) throw new AppError(413, 'FILE_TOO_LARGE', 'Files must not exceed 10 MB.');
   if (!new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']).has(file.type)) throw new AppError(415, 'FILE_TYPE_NOT_ALLOWED', 'This file type is not allowed.');
+  if (!await fileOwnerBelongsToClinic(c.get('db'), clinicId, ownerType, ownerId)) {
+    throw new AppError(404, 'FILE_OWNER_NOT_FOUND', 'The file owner was not found in this clinic.');
+  }
   const fileId = crypto.randomUUID();
-  const objectKey = `clinics/${clinicId}/files/${fileId}`;
+  const objectKey = `clinics/${clinicId}/${ownerType.toLowerCase()}/${ownerId}/${fileId}`;
   await c.env.UPLOADS.put(objectKey, file.stream(), { httpMetadata: { contentType: file.type }, customMetadata: { clinicId, fileId } });
   const metadata = await createFileMetadata(c.get('db'), { clinicId, ownerId, ownerType, objectKey, bucket: 'dentivohq-uploads', mimeType: file.type, sizeBytes: file.size, createdBy: c.get('authSession').user.id });
   return c.json({ data: metadata }, 201);

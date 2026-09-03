@@ -1,4 +1,4 @@
-import type { AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput } from '@dentivohq/validation';
+import type { AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, FileOwnerType, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput } from '@dentivohq/validation';
 import type { AppointmentRecord, ClinicMembership } from './types';
 import type { Database } from './client';
 
@@ -358,11 +358,16 @@ export async function getPlatformOverview(db: Database, userId: string) {
   return { clinics: Number(clinics[0]?.value ?? 0), users: Number(users[0]?.value ?? 0), appointmentsToday: Number(appointments[0]?.value ?? 0) };
 }
 
-export async function createFileMetadata(db: Database, input: { clinicId: string; ownerType: string; ownerId: string; bucket: string; objectKey: string; mimeType: string; sizeBytes: number; createdBy: string }) {
+export async function fileOwnerBelongsToClinic(db: Database, clinicId: string, ownerType: FileOwnerType, ownerId: string) {
+  const rows = await db`select file_owner_belongs_to_clinic(${clinicId}, ${ownerType}::file_owner_type, ${ownerId}) as belongs`;
+  return rows[0]?.belongs === true;
+}
+
+export async function createFileMetadata(db: Database, input: { clinicId: string; ownerType: FileOwnerType; ownerId: string; bucket: string; objectKey: string; mimeType: string; sizeBytes: number; createdBy: string }) {
   const rows = await db`
     with inserted as (
       insert into file_objects(clinic_id, owner_type, owner_id, bucket, object_key, mime_type, size_bytes, created_by)
-      values(${input.clinicId}, ${input.ownerType}, ${input.ownerId}, ${input.bucket}, ${input.objectKey}, ${input.mimeType}, ${input.sizeBytes}, ${input.createdBy})
+      values(${input.clinicId}, ${input.ownerType}::file_owner_type, ${input.ownerId}, ${input.bucket}, ${input.objectKey}, ${input.mimeType}, ${input.sizeBytes}, ${input.createdBy})
       returning *
     ), audited as (
       insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id)

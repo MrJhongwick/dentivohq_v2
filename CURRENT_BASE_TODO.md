@@ -175,10 +175,11 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 
 ## 6. Files, audit, and tenant safety
 
-- [ ] **SEC-001 · P0 — Authorize file ownership before upload**
+- [x] **SEC-001 · P0 — Authorize file ownership before upload**
   - Replace arbitrary `ownerType` values with a validated enum and verify the owner belongs to the active clinic before writing to R2.
   - Acceptance: A file cannot reference a missing resource, another tenant's resource, or an unsupported owner type.
-  - Evidence: The current file upload route accepts arbitrary `ownerType` and does not validate `ownerId` ownership.
+  - Status: Complete. Uploads accept only supported owner types and verify an active owner in the current clinic before R2 is called.
+  - Evidence: `0007_file_ownership.sql` adds the `file_owner_type` enum and a tenant-enforcement trigger; the upload route calls `fileOwnerBelongsToClinic()` before object creation.
 
 - [ ] **SEC-002 · P0 — Make R2 and metadata operations consistent**
   - Add compensating cleanup for failed uploads, retry-safe deletion, and orphan-object reconciliation.

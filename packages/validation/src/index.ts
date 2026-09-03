@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const uuidSchema = z.string().uuid();
 export const idempotencyKeySchema = z.string().trim().min(8).max(128).regex(/^[A-Za-z0-9._:-]+$/);
+export const fileOwnerTypeSchema = z.enum(['CLINIC_PATIENT', 'APPOINTMENT']);
 export const clinicIdParamSchema = z.object({ clinicId: uuidSchema });
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -94,3 +95,4 @@ export type CreateDentistInput = z.infer<typeof createDentistSchema>;
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;
 export type CreateScheduleInput = z.infer<typeof createScheduleSchema>;
 export type CreatePatientInput = z.infer<typeof createPatientSchema>;
+export type FileOwnerType = z.infer<typeof fileOwnerTypeSchema>;
