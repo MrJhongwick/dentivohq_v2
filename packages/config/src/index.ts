@@ -12,6 +12,7 @@ export const serverEnvSchema = z.object({
   GOOGLE_CLIENT_SECRET: optionalSecret,
   RESEND_API_KEY: optionalSecret,
   RESEND_FROM_EMAIL: optionalSecret,
+  TURNSTILE_SECRET_KEY: optionalSecret,
   CORS_ORIGINS: z.string().transform((value) => value.split(',').map((origin) => origin.trim()).filter(Boolean))
 });
 
@@ -23,7 +24,8 @@ export function parseServerEnv(input: Record<string, unknown>): ServerEnv {
 
 export const browserEnvSchema = z.object({
   apiUrl: z.string().url(),
-  dashboardUrl: z.string().url().optional()
+  dashboardUrl: z.string().url().optional(),
+  turnstileSiteKey: optionalSecret
 });
 
 export type BrowserEnv = z.infer<typeof browserEnvSchema>;

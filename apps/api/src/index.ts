@@ -71,9 +71,24 @@ async function assertClinicPermission(c: AppContext, clinicId: string, permissio
 }
 
 async function enforcePublicRateLimit(c: AppContext) {
-  const key = `booking:${c.req.param('clinicSlug') ?? 'unknown'}`;
+  const source = c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() ?? 'unknown';
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${c.get('runtime').BETTER_AUTH_SECRET}:${source}`));
+  const sourceHash = Array.from(new Uint8Array(digest).slice(0, 12), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  const key = `booking:${c.req.param('clinicSlug') ?? 'unknown'}:${sourceHash}`;
   const { success } = await c.env.PUBLIC_BOOKING_RATE_LIMIT.limit({ key });
   if (!success) throw new AppError(429, 'RATE_LIMITED', 'Too many booking requests. Please try again shortly.');
+}
+
+async function verifyTurnstile(c: AppContext, token: string | undefined) {
+  const secret = c.get('runtime').TURNSTILE_SECRET_KEY;
+  if (!secret) return;
+  if (!token) throw new AppError(400, 'BOT_VERIFICATION_REQUIRED', 'Complete the bot verification and try again.');
+  const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ secret, response: token, remoteip: c.req.header('CF-Connecting-IP'), idempotency_key: crypto.randomUUID() })
+  });
+  const result = await response.json() as { success?: boolean };
+  if (!response.ok || !result.success) throw new AppError(400, 'BOT_VERIFICATION_FAILED', 'Bot verification failed. Please try again.');
 }
 
 function getIdempotencyKey(c: AppContext) {
@@ -275,7 +290,9 @@ app.get('/api/v1/public/clinics/:clinicSlug/availability', async (c) => {
 
 app.post('/api/v1/public/clinics/:clinicSlug/appointments', async (c) => {
   await enforcePublicRateLimit(c);
-  const appointment = await createPublicAppointment(c.get('db'), c.req.param('clinicSlug'), publicBookingSchema.parse(await c.req.json()), getIdempotencyKey(c));
+  const body = publicBookingSchema.parse(await c.req.json());
+  await verifyTurnstile(c, body.turnstileToken);
+  const appointment = await createPublicAppointment(c.get('db'), c.req.param('clinicSlug'), body, getIdempotencyKey(c));
   return c.json({ data: { id: appointment.id, startsAt: appointment.startsAt, endsAt: appointment.endsAt, status: appointment.status } }, 201);
 });
 

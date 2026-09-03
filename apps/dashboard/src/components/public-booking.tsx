@@ -1,6 +1,11 @@
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@dentivohq/ui';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MutableRefObject } from 'react';
 import { apiRequest } from '../lib/api';
+import { environment } from '../lib/environment';
+
+declare global {
+  interface Window { turnstile?: { render(element: HTMLElement, options: { sitekey: string; callback: (token: string) => void; 'expired-callback': () => void }): string; reset(widgetId?: string): void } }
+}
 
 type Option = { id: string; name?: string; display_name?: string };
 type Config = { clinic: { name: string }; locations: Option[]; services: Option[]; dentists: Option[]; combinations: Array<{ locationId: string; dentistId: string; serviceId: string }> };
@@ -13,6 +18,8 @@ export function PublicBooking({ clinicSlug }: { clinicSlug: string }) {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [selection, setSelection] = useState<Selection>({ locationId: '', dentistId: '', serviceId: '', date: '', startsAt: '' });
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const turnstileWidget = useRef<string | undefined>(undefined);
   const bookingAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
   useEffect(() => { void apiRequest<{ data: Config }>(`/api/v1/public/clinics/${clinicSlug}/booking-config`).then((result) => { setConfig(result.data); setMessage(''); }).catch((error: Error) => setMessage(error.message)); }, [clinicSlug]);
 
@@ -49,7 +56,8 @@ export function PublicBooking({ clinicSlug }: { clinicSlug: string }) {
     const form = new FormData(event.currentTarget);
     const payload = {
       locationId: selection.locationId, dentistId: selection.dentistId, serviceId: selection.serviceId, startsAt: selection.startsAt,
-      patient: { name: form.get('name'), email: form.get('email'), phone: form.get('phone') }
+      patient: { name: form.get('name'), email: form.get('email'), phone: form.get('phone') },
+      turnstileToken: turnstileToken || undefined
     };
     const fingerprint = JSON.stringify(payload);
     if (bookingAttempt.current?.fingerprint !== fingerprint) bookingAttempt.current = { fingerprint, key: crypto.randomUUID() };
@@ -59,7 +67,7 @@ export function PublicBooking({ clinicSlug }: { clinicSlug: string }) {
       });
       bookingAttempt.current = null;
       setMessage(result.data.status === 'PENDING' ? 'Your appointment request was received. The clinic will confirm it shortly.' : 'Your appointment is confirmed. Check your email for details.');
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to book this appointment.'); }
+    } catch (error) { setTurnstileToken(''); window.turnstile?.reset(turnstileWidget.current); setMessage(error instanceof Error ? error.message : 'Unable to book this appointment.'); }
   }
 
   return <main className="mx-auto min-h-screen max-w-3xl px-5 py-16"><a className="text-xl font-extrabold" href="/">DentivoHQ</a><Card className="mt-10"><CardHeader><CardTitle>Book a visit{config ? ` with ${config.clinic.name}` : ''}</CardTitle><CardDescription>Choose an available clinic service and time.</CardDescription></CardHeader><CardContent>
@@ -71,7 +79,8 @@ export function PublicBooking({ clinicSlug }: { clinicSlug: string }) {
       <label className="flex flex-col gap-1.5 text-sm font-semibold">Name<input className="h-10 rounded-lg border border-border px-3 font-normal" name="name" required /></label>
       <label className="flex flex-col gap-1.5 text-sm font-semibold">Email<input className="h-10 rounded-lg border border-border px-3 font-normal" name="email" type="email" required /></label>
       <label className="flex flex-col gap-1.5 text-sm font-semibold">Phone<input className="h-10 rounded-lg border border-border px-3 font-normal" name="phone" required /></label>
-      <Button className="sm:col-span-2" type="submit">Request appointment</Button>
+      {environment.turnstileSiteKey ? <TurnstileWidget onToken={setTurnstileToken} widgetRef={turnstileWidget} /> : null}
+      <Button className="sm:col-span-2" disabled={Boolean(environment.turnstileSiteKey && !turnstileToken)} type="submit">Request appointment</Button>
     </form> : null}
     {message ? <p className="mt-4 text-sm text-muted-foreground" role="status">{message}</p> : null}
   </CardContent></Card></main>;
@@ -79,4 +88,19 @@ export function PublicBooking({ clinicSlug }: { clinicSlug: string }) {
 
 function SelectField({ label, options, value, onChange, disabled = false }: { label: string; options: Option[]; value: string; onChange: (value: string) => void; disabled?: boolean }) {
   return <label className="flex flex-col gap-1.5 text-sm font-semibold">{label}<select className="h-10 rounded-lg border border-border bg-white px-3 font-normal disabled:opacity-50" disabled={disabled} onChange={(event) => onChange(event.target.value)} required value={value}><option value="">Choose {label.toLowerCase()}</option>{options.map((option) => <option key={option.id} value={option.id}>{option.name ?? option.display_name}</option>)}</select></label>;
+}
+
+function TurnstileWidget({ onToken, widgetRef }: { onToken: (token: string) => void; widgetRef: MutableRefObject<string | undefined> }) {
+  const container = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const render = () => {
+      if (!cancelled && container.current && window.turnstile && environment.turnstileSiteKey && !widgetRef.current) widgetRef.current = window.turnstile.render(container.current, { sitekey: environment.turnstileSiteKey, callback: onToken, 'expired-callback': () => onToken('') });
+    };
+    const existing = document.querySelector<HTMLScriptElement>('script[data-dentivohq-turnstile]');
+    if (existing) { existing.addEventListener('load', render); render(); }
+    else { const script = document.createElement('script'); script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; script.async = true; script.defer = true; script.dataset.dentivohqTurnstile = 'true'; script.addEventListener('load', render); document.head.appendChild(script); }
+    return () => { cancelled = true; existing?.removeEventListener('load', render); };
+  }, [onToken, widgetRef]);
+  return <div className="sm:col-span-2" ref={container} />;
 }
