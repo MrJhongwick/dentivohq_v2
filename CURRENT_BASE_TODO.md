@@ -96,7 +96,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: All provider inputs required by availability can be configured without SQL or direct API calls.
   - Evidence: Only dentist creation and assignment POST routes currently exist.
 
-- [ ] **OPS-003 · P0 — Complete service management**
+- [x] **OPS-003 · P0 — Complete service management**
   - Add service list, edit, archive, and reactivate workflows with consistent price and currency handling.
   - Acceptance: Only active and correctly configured services can be offered for booking.
   - Evidence: A service creation endpoint exists, but no management screen or update route exists.

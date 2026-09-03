@@ -5,12 +5,12 @@ import {
   createAppointment, createClinic, createDatabase, createDentist, createLocation, createPatient,
   createPublicAppointment, createSchedule, createService, createStaffInvitation, finalizeFileDeletion,
   fileOwnerBelongsToClinic, findFileMetadata, getClinicDashboardOverview, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
-  listDentists, listLocations, listServices, listUserClinics, reserveFileMetadata, rescheduleAppointment, unassignDentistLocation, unassignDentistService, updateAppointmentStatus, updateDentist, updateLocation, type Database
+  listDentists, listLocations, listServices, listUserClinics, reserveFileMetadata, rescheduleAppointment, unassignDentistLocation, unassignDentistService, updateAppointmentStatus, updateDentist, updateLocation, updateService, type Database
 } from '@dentivohq/db';
 import {
   acceptInvitationSchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
   createLocationSchema, createPatientSchema, createScheduleSchema, createServiceSchema, inviteStaffSchema,
-  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateDentistSchema, updateLocationSchema, uuidSchema
+  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateDentistSchema, updateLocationSchema, updateServiceSchema, uuidSchema
 } from '@dentivohq/validation';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
@@ -184,6 +184,13 @@ app.post('/api/v1/clinics/:clinicId/services', requireSession, requireClinicPerm
 app.get('/api/v1/clinics/:clinicId/services', requireSession, requireClinicPermission('appointment.read'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   return c.json({ data: await listServices(c.get('db'), clinicId) });
+});
+
+app.patch('/api/v1/clinics/:clinicId/services/:serviceId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => {
+  const { clinicId } = clinicIdParamSchema.parse(c.req.param());
+  const service = await updateService(c.get('db'), clinicId, uuidSchema.parse(c.req.param('serviceId')), c.get('authSession').user.id, updateServiceSchema.parse(await c.req.json()));
+  if (!service) throw new AppError(404, 'SERVICE_NOT_FOUND', 'Service not found.');
+  return c.json({ data: service });
 });
 
 app.post('/api/v1/clinics/:clinicId/schedules', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => {

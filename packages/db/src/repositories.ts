@@ -1,4 +1,4 @@
-import type { AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, FileOwnerType, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput, UpdateDentistInput, UpdateLocationInput } from '@dentivohq/validation';
+import type { AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, FileOwnerType, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput, UpdateDentistInput, UpdateLocationInput, UpdateServiceInput } from '@dentivohq/validation';
 import type { AppointmentRecord, ClinicMembership } from './types';
 import type { Database } from './client';
 
@@ -184,6 +184,19 @@ export async function createService(db: Database, clinicId: string, userId: stri
 }
 
 export async function listServices(db: Database, clinicId: string) { return db`select id, name, description, duration_minutes, price_minor, currency, active from services where clinic_id = ${clinicId} order by active desc, name`; }
+
+export async function updateService(db: Database, clinicId: string, serviceId: string, userId: string, input: UpdateServiceInput) {
+  const rows = await db`
+    with updated as (
+      update services set name = coalesce(${input.name ?? null}, name), description = coalesce(${input.description ?? null}, description), duration_minutes = coalesce(${input.durationMinutes ?? null}, duration_minutes), price_minor = coalesce(${input.priceMinor ?? null}, price_minor), currency = coalesce(${input.currency ?? null}, currency), active = coalesce(${input.active ?? null}, active)
+      where clinic_id = ${clinicId} and id = ${serviceId} returning *
+    ), audit as (
+      insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id)
+      select ${clinicId}, ${userId}, case when active then 'SERVICE_UPDATED' else 'SERVICE_ARCHIVED' end, 'service', id::text from updated
+    ) select * from updated
+  `;
+  return rows[0] ?? null;
+}
 
 export async function createSchedule(db: Database, clinicId: string, userId: string, input: CreateScheduleInput) {
   const rows = await db`

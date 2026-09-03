@@ -72,7 +72,12 @@ export const createServiceSchema = z.object({
   name: z.string().trim().min(2).max(120), description: z.string().trim().max(1000).optional(),
   durationMinutes: z.number().int().min(5).max(480), priceMinor: z.number().int().min(0).optional(),
   currency: z.string().trim().toUpperCase().length(3).optional()
-});
+}).refine((value) => Boolean(value.priceMinor !== undefined) === Boolean(value.currency), { message: 'Price and currency must be provided together.' });
+export const updateServiceSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(), description: z.string().trim().max(1000).optional(),
+  durationMinutes: z.number().int().min(5).max(480).optional(), priceMinor: z.number().int().min(0).optional(),
+  currency: z.string().trim().toUpperCase().length(3).optional(), active: z.boolean().optional()
+}).refine((value) => Object.keys(value).length > 0, { message: 'At least one service field is required.' }).refine((value) => value.priceMinor === undefined && value.currency === undefined || value.priceMinor !== undefined && value.currency !== undefined, { message: 'Price and currency must be updated together.' });
 export const createScheduleSchema = z.object({
   dentistId: uuidSchema, locationId: uuidSchema, dayOfWeek: z.number().int().min(0).max(6),
   startsAtLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), endsAtLocal: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
@@ -97,6 +102,7 @@ export type InviteStaffInput = z.infer<typeof inviteStaffSchema>;
 export type CreateDentistInput = z.infer<typeof createDentistSchema>;
 export type UpdateDentistInput = z.infer<typeof updateDentistSchema>;
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;
+export type UpdateServiceInput = z.infer<typeof updateServiceSchema>;
 export type CreateScheduleInput = z.infer<typeof createScheduleSchema>;
 export type CreatePatientInput = z.infer<typeof createPatientSchema>;
 export type FileOwnerType = z.infer<typeof fileOwnerTypeSchema>;
