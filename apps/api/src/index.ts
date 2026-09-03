@@ -5,12 +5,12 @@ import {
   createAppointment, createClinic, createDatabase, createDentist, createLocation, createPatient,
   createPublicAppointment, createSchedule, createService, createStaffInvitation, finalizeFileDeletion,
   fileOwnerBelongsToClinic, findFileMetadata, getClinicDashboardOverview, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
-  listLocations, listUserClinics, reserveFileMetadata, rescheduleAppointment, updateAppointmentStatus, updateLocation, type Database
+  listDentists, listLocations, listServices, listUserClinics, reserveFileMetadata, rescheduleAppointment, unassignDentistLocation, unassignDentistService, updateAppointmentStatus, updateDentist, updateLocation, type Database
 } from '@dentivohq/db';
 import {
   acceptInvitationSchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
   createLocationSchema, createPatientSchema, createScheduleSchema, createServiceSchema, inviteStaffSchema,
-  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateLocationSchema, uuidSchema
+  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateDentistSchema, updateLocationSchema, uuidSchema
 } from '@dentivohq/validation';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
@@ -140,6 +140,18 @@ app.post('/api/v1/clinics/:clinicId/dentists', requireSession, requireClinicPerm
   return c.json({ data: await createDentist(c.get('db'), clinicId, c.get('authSession').user.id, createDentistSchema.parse(await c.req.json())) }, 201);
 });
 
+app.get('/api/v1/clinics/:clinicId/dentists', requireSession, requireClinicPermission('appointment.read'), async (c) => {
+  const { clinicId } = clinicIdParamSchema.parse(c.req.param());
+  return c.json({ data: await listDentists(c.get('db'), clinicId) });
+});
+
+app.patch('/api/v1/clinics/:clinicId/dentists/:dentistId', requireSession, requireClinicPermission('staff.update'), async (c) => {
+  const { clinicId } = clinicIdParamSchema.parse(c.req.param());
+  const dentist = await updateDentist(c.get('db'), clinicId, uuidSchema.parse(c.req.param('dentistId')), c.get('authSession').user.id, updateDentistSchema.parse(await c.req.json()));
+  if (!dentist) throw new AppError(404, 'DENTIST_NOT_FOUND', 'Dentist not found.');
+  return c.json({ data: dentist });
+});
+
 app.post('/api/v1/clinics/:clinicId/dentist-locations', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const input = dentistAssignmentSchema.required({ locationId: true }).parse(await c.req.json());
@@ -152,9 +164,26 @@ app.post('/api/v1/clinics/:clinicId/dentist-services', requireSession, requireCl
   return c.json({ data: await assignDentistService(c.get('db'), clinicId, input.dentistId, input.serviceId) }, 201);
 });
 
+app.delete('/api/v1/clinics/:clinicId/dentist-locations/:dentistId/:locationId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => {
+  const { clinicId } = clinicIdParamSchema.parse(c.req.param());
+  await unassignDentistLocation(c.get('db'), clinicId, uuidSchema.parse(c.req.param('dentistId')), uuidSchema.parse(c.req.param('locationId')));
+  return c.body(null, 204);
+});
+
+app.delete('/api/v1/clinics/:clinicId/dentist-services/:dentistId/:serviceId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => {
+  const { clinicId } = clinicIdParamSchema.parse(c.req.param());
+  await unassignDentistService(c.get('db'), clinicId, uuidSchema.parse(c.req.param('dentistId')), uuidSchema.parse(c.req.param('serviceId')));
+  return c.body(null, 204);
+});
+
 app.post('/api/v1/clinics/:clinicId/services', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   return c.json({ data: await createService(c.get('db'), clinicId, c.get('authSession').user.id, createServiceSchema.parse(await c.req.json())) }, 201);
+});
+
+app.get('/api/v1/clinics/:clinicId/services', requireSession, requireClinicPermission('appointment.read'), async (c) => {
+  const { clinicId } = clinicIdParamSchema.parse(c.req.param());
+  return c.json({ data: await listServices(c.get('db'), clinicId) });
 });
 
 app.post('/api/v1/clinics/:clinicId/schedules', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => {

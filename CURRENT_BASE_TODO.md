@@ -91,7 +91,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: Clinic owners and administrators can safely manage multiple timezone-aware locations.
   - Evidence: A location creation endpoint exists, but there are no list or update routes.
 
-- [ ] **OPS-002 · P0 — Complete dentist and assignment management**
+- [x] **OPS-002 · P0 — Complete dentist and assignment management**
   - Add dentist list, edit, and archive workflows plus location and service assignment management.
   - Acceptance: All provider inputs required by availability can be configured without SQL or direct API calls.
   - Evidence: Only dentist creation and assignment POST routes currently exist.

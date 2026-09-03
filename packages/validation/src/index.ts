@@ -67,6 +67,7 @@ export const createDentistSchema = z.object({
   licenseNumber: z.string().trim().max(80).optional(),
   userId: z.string().min(1).optional()
 });
+export const updateDentistSchema = createDentistSchema.partial().extend({ active: z.boolean().optional() }).refine((value) => Object.keys(value).length > 0, { message: 'At least one dentist field is required.' });
 export const createServiceSchema = z.object({
   name: z.string().trim().min(2).max(120), description: z.string().trim().max(1000).optional(),
   durationMinutes: z.number().int().min(5).max(480), priceMinor: z.number().int().min(0).optional(),
@@ -94,6 +95,7 @@ export type CreateLocationInput = z.infer<typeof createLocationSchema>;
 export type UpdateLocationInput = z.infer<typeof updateLocationSchema>;
 export type InviteStaffInput = z.infer<typeof inviteStaffSchema>;
 export type CreateDentistInput = z.infer<typeof createDentistSchema>;
+export type UpdateDentistInput = z.infer<typeof updateDentistSchema>;
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;
 export type CreateScheduleInput = z.infer<typeof createScheduleSchema>;
 export type CreatePatientInput = z.infer<typeof createPatientSchema>;
