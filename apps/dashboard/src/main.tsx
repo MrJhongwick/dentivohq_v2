@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@dent
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AuthPanel } from './components/auth-panel';
+import { ResetPasswordPanel, SessionExpiredPanel, VerificationResultPanel } from './components/auth-recovery';
 import { DashboardApp } from './components/dashboard-app';
 import { ClinicSetupWizard } from './components/clinic-setup-wizard';
 import { InvitationAcceptance } from './components/invitation-acceptance';
@@ -13,6 +14,7 @@ import './styles.css';
 export function App() {
   const bookingMatch = window.location.pathname.match(/^\/book\/([a-z0-9-]+)$/);
   const invitationRoute = window.location.pathname === '/accept-invitation';
+  const authParams = new URLSearchParams(window.location.search);
   const session = authClient.useSession();
   const [connectionTimedOut, setConnectionTimedOut] = useState(false);
   useEffect(() => {
@@ -21,6 +23,9 @@ export function App() {
     return () => window.clearTimeout(timeout);
   }, [session.isPending]);
   if (bookingMatch?.[1]) return <PublicBooking clinicSlug={bookingMatch[1]} />;
+  if (window.location.pathname === '/reset-password') return <ResetPasswordPanel token={authParams.get('token') ?? ''} />;
+  if (window.location.pathname === '/verify-email') return <VerificationResultPanel error={authParams.get('error')} />;
+  if (window.location.pathname === '/session-expired') return <SessionExpiredPanel />;
   if (import.meta.env.DEV && window.location.pathname === '/accept-invitation-preview') return <InvitationAcceptance authenticated token={'a'.repeat(64)} preview />;
   if (import.meta.env.DEV && window.location.pathname === '/dashboard-preview') return <DashboardApp preview={dashboardPreview} user={{ name: 'Dr. Alex Morgan', email: 'alex.morgan@example.test' }} />;
   if (import.meta.env.DEV && window.location.pathname === '/onboarding-preview') return <ClinicSetupWizard onClinicCreated={() => undefined} onComplete={() => { window.location.assign('/dashboard-preview'); }} />;

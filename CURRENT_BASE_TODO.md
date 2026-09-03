@@ -74,7 +74,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: Google sign-in appears only when configured and returns to the correct environment-based URL.
   - Evidence: `packages/auth/src/server.ts` configures Google, while `apps/dashboard/src/components/auth-panel.tsx` offers only email/password.
 
-- [ ] **AUTH-004 · P1 — Add password reset, verification, logout, and session UX**
+- [x] **AUTH-004 · P1 — Add password reset, verification, logout, and session UX**
   - Implement screens and recovery actions for password reset, email verification, expired links, sign-out, and expired sessions.
   - Acceptance: Every Better Auth lifecycle state has a deterministic user-facing result and recovery path.
   - Evidence: The Better Auth server behavior exists, but the dashboard has only sign-in and registration UI.
