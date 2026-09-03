@@ -1,10 +1,11 @@
 import { createAuth, permissionForAppointmentStatus, resolveAuthorizedMembership, type DentivoAuth, type Permission } from '@dentivohq/auth';
 import { parseServerEnv, type ServerEnv } from '@dentivohq/config';
 import {
-  acceptStaffInvitation, assignDentistLocation, assignDentistService, createAppointment, createClinic, createDatabase, createDentist, createFileMetadata, createLocation, createPatient,
-  createPublicAppointment, createSchedule, createService, createStaffInvitation, deleteFileMetadata,
+  abandonFileMetadata, acceptStaffInvitation, activateFileMetadata, assignDentistLocation, assignDentistService, beginFileDeletion,
+  createAppointment, createClinic, createDatabase, createDentist, createLocation, createPatient,
+  createPublicAppointment, createSchedule, createService, createStaffInvitation, finalizeFileDeletion,
   fileOwnerBelongsToClinic, findFileMetadata, getClinicDashboardOverview, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
-  listUserClinics, rescheduleAppointment, updateAppointmentStatus, type Database
+  listUserClinics, reserveFileMetadata, rescheduleAppointment, updateAppointmentStatus, type Database
 } from '@dentivohq/db';
 import {
   acceptInvitationSchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
@@ -16,6 +17,7 @@ import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import { AppError, normalizeError } from './errors';
 import { createEmailSender } from './services/email';
+import { reconcileFileStorage } from './services/files';
 import { processNotificationJobs } from './services/notifications';
 
 type AuthSession = Awaited<ReturnType<DentivoAuth['api']['getSession']>>;
@@ -226,8 +228,16 @@ app.post('/api/v1/clinics/:clinicId/files', requireSession, requireClinicPermiss
   }
   const fileId = crypto.randomUUID();
   const objectKey = `clinics/${clinicId}/${ownerType.toLowerCase()}/${ownerId}/${fileId}`;
-  await c.env.UPLOADS.put(objectKey, file.stream(), { httpMetadata: { contentType: file.type }, customMetadata: { clinicId, fileId } });
-  const metadata = await createFileMetadata(c.get('db'), { clinicId, ownerId, ownerType, objectKey, bucket: 'dentivohq-uploads', mimeType: file.type, sizeBytes: file.size, createdBy: c.get('authSession').user.id });
+  const pending = await reserveFileMetadata(c.get('db'), { clinicId, ownerId, ownerType, objectKey, bucket: 'UPLOADS', mimeType: file.type, sizeBytes: file.size, createdBy: c.get('authSession').user.id });
+  if (!pending) throw new AppError(500, 'FILE_RESERVATION_FAILED', 'The file upload could not be started.');
+  try {
+    await c.env.UPLOADS.put(objectKey, file.stream(), { httpMetadata: { contentType: file.type }, customMetadata: { clinicId, fileId } });
+  } catch (error) {
+    await abandonFileMetadata(c.get('db'), clinicId, String(pending.id)).catch(() => undefined);
+    throw error;
+  }
+  const metadata = await activateFileMetadata(c.get('db'), clinicId, String(pending.id));
+  if (!metadata) throw new AppError(500, 'FILE_ACTIVATION_FAILED', 'The file upload could not be completed.');
   return c.json({ data: metadata }, 201);
 });
 
@@ -243,10 +253,10 @@ app.get('/api/v1/clinics/:clinicId/files/:fileId', requireSession, requireClinic
 app.delete('/api/v1/clinics/:clinicId/files/:fileId', requireSession, requireClinicPermission('patient.update'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const fileId = uuidSchema.parse(c.req.param('fileId'));
-  const metadata = await findFileMetadata(c.get('db'), clinicId, fileId);
-  if (!metadata) throw new AppError(404, 'FILE_NOT_FOUND', 'File not found.');
+  const metadata = await beginFileDeletion(c.get('db'), clinicId, fileId);
+  if (!metadata) return c.body(null, 204);
   await c.env.UPLOADS.delete(String(metadata.object_key));
-  await deleteFileMetadata(c.get('db'), clinicId, fileId, c.get('authSession').user.id);
+  await finalizeFileDeletion(c.get('db'), clinicId, fileId, c.get('authSession').user.id);
   return c.body(null, 204);
 });
 
@@ -269,6 +279,9 @@ export default {
   },
   scheduled(_controller, env, context) {
     const runtime = parseServerEnv(env as unknown as Record<string, unknown>);
-    context.waitUntil(processNotificationJobs(runtime));
+    context.waitUntil(Promise.all([
+      processNotificationJobs(runtime),
+      reconcileFileStorage(createDatabase(runtime.DATABASE_URL), env.UPLOADS)
+    ]).then(() => undefined));
   }
 } satisfies ExportedHandler<AppBindings>;

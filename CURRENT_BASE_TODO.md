@@ -181,10 +181,11 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Status: Complete. Uploads accept only supported owner types and verify an active owner in the current clinic before R2 is called.
   - Evidence: `0007_file_ownership.sql` adds the `file_owner_type` enum and a tenant-enforcement trigger; the upload route calls `fileOwnerBelongsToClinic()` before object creation.
 
-- [ ] **SEC-002 · P0 — Make R2 and metadata operations consistent**
+- [x] **SEC-002 · P0 — Make R2 and metadata operations consistent**
   - Add compensating cleanup for failed uploads, retry-safe deletion, and orphan-object reconciliation.
   - Acceptance: Failures cannot leave untracked R2 objects or database rows pointing to missing objects.
-  - Evidence: Upload writes to R2 before inserting metadata; deletion removes the object before deleting metadata.
+  - Status: Complete. Uploads and deletions use recoverable metadata states, and the scheduled Worker reconciles interrupted operations and storage orphans.
+  - Evidence: `0008_file_consistency.sql` defines the state machine; the API reserves metadata before upload and marks deletion before R2 removal; `reconcileFileStorage()` repairs or removes inconsistent records and objects.
 
 - [ ] **SEC-003 · P1 — Prove private-file authorization**
   - Add tests for wrong clinic, wrong role, missing owner, deleted object, blocked MIME type, oversized upload, and private caching headers.

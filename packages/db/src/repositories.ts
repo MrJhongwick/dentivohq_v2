@@ -363,31 +363,86 @@ export async function fileOwnerBelongsToClinic(db: Database, clinicId: string, o
   return rows[0]?.belongs === true;
 }
 
-export async function createFileMetadata(db: Database, input: { clinicId: string; ownerType: FileOwnerType; ownerId: string; bucket: string; objectKey: string; mimeType: string; sizeBytes: number; createdBy: string }) {
+type FileMetadataInput = { clinicId: string; ownerType: FileOwnerType; ownerId: string; bucket: string; objectKey: string; mimeType: string; sizeBytes: number; createdBy: string };
+
+export async function reserveFileMetadata(db: Database, input: FileMetadataInput) {
   const rows = await db`
-    with inserted as (
-      insert into file_objects(clinic_id, owner_type, owner_id, bucket, object_key, mime_type, size_bytes, created_by)
-      values(${input.clinicId}, ${input.ownerType}::file_owner_type, ${input.ownerId}, ${input.bucket}, ${input.objectKey}, ${input.mimeType}, ${input.sizeBytes}, ${input.createdBy})
-      returning *
-    ), audited as (
-      insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id)
-      select ${input.clinicId}, ${input.createdBy}, 'FILE_UPLOADED', 'file', inserted.id::text from inserted
-    ) select * from inserted
+    insert into file_objects(clinic_id, owner_type, owner_id, bucket, object_key, mime_type, size_bytes, created_by, status)
+    values(${input.clinicId}, ${input.ownerType}::file_owner_type, ${input.ownerId}, ${input.bucket}, ${input.objectKey}, ${input.mimeType}, ${input.sizeBytes}, ${input.createdBy}, 'PENDING_UPLOAD')
+    returning *
   `;
   return rows[0] ?? null;
 }
 
-export async function findFileMetadata(db: Database, clinicId: string, fileId: string) {
-  const rows = await db`select * from file_objects where id = ${fileId} and clinic_id = ${clinicId} limit 1`;
+export async function activateFileMetadata(db: Database, clinicId: string, fileId: string) {
+  const rows = await db`
+    with activated as (
+      update file_objects set status = 'ACTIVE'
+      where id = ${fileId} and clinic_id = ${clinicId} and status = 'PENDING_UPLOAD'
+      returning *
+    ), audited as (
+      insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id)
+      select clinic_id, created_by, 'FILE_UPLOADED', 'file', id::text from activated
+    ) select * from activated
+  `;
   return rows[0] ?? null;
 }
 
-export async function deleteFileMetadata(db: Database, clinicId: string, fileId: string, actorUserId: string) {
-  const rows = await db.transaction((tx) => [
-    tx`delete from file_objects where id = ${fileId} and clinic_id = ${clinicId} returning object_key`,
-    tx`insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) values(${clinicId}, ${actorUserId}, 'FILE_DELETED', 'file', ${fileId})`
-  ]);
-  return rows[0]?.[0] ?? null;
+export async function abandonFileMetadata(db: Database, clinicId: string, fileId: string) {
+  await db`delete from file_objects where id = ${fileId} and clinic_id = ${clinicId} and status = 'PENDING_UPLOAD'`;
+}
+
+export async function findFileMetadata(db: Database, clinicId: string, fileId: string) {
+  const rows = await db`select * from file_objects where id = ${fileId} and clinic_id = ${clinicId} and status = 'ACTIVE' limit 1`;
+  return rows[0] ?? null;
+}
+
+export async function beginFileDeletion(db: Database, clinicId: string, fileId: string) {
+  const rows = await db`
+    update file_objects set status = 'DELETE_PENDING'
+    where id = ${fileId} and clinic_id = ${clinicId} and status in ('ACTIVE', 'DELETE_PENDING')
+    returning *
+  `;
+  return rows[0] ?? null;
+}
+
+export async function finalizeFileDeletion(db: Database, clinicId: string, fileId: string, actorUserId?: string) {
+  const rows = await db`
+    with deleted as (
+      delete from file_objects
+      where id = ${fileId} and clinic_id = ${clinicId} and status = 'DELETE_PENDING'
+      returning id, clinic_id, created_by
+    ), audited as (
+      insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id)
+      select clinic_id, ${actorUserId ?? null}, 'FILE_DELETED', 'file', id::text from deleted
+    ) select * from deleted
+  `;
+  return rows[0] ?? null;
+}
+
+export async function listFileMetadataForReconciliation(db: Database, limit = 100) {
+  return db`
+    select * from file_objects
+    where status = 'ACTIVE'
+       or (status in ('PENDING_UPLOAD', 'DELETE_PENDING') and updated_at < now() - interval '10 minutes')
+    order by case status when 'DELETE_PENDING' then 0 when 'PENDING_UPLOAD' then 1 else 2 end, updated_at
+    limit ${limit}
+  `;
+}
+
+export async function findFileMetadataByObjectKey(db: Database, objectKey: string) {
+  const rows = await db`select id from file_objects where object_key = ${objectKey} limit 1`;
+  return rows[0] ?? null;
+}
+
+export async function removeMissingFileMetadata(db: Database, clinicId: string, fileId: string) {
+  await db`
+    with deleted as (
+      delete from file_objects where id = ${fileId} and clinic_id = ${clinicId} returning id, clinic_id
+    )
+    insert into audit_logs(clinic_id, action, resource_type, resource_id)
+    select clinic_id, 'FILE_RECONCILED_MISSING', 'file', id::text from deleted
+  `;
 }
 
 export async function claimNotificationJobs(db: Database, limit = 25) {
