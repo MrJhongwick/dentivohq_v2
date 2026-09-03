@@ -245,7 +245,7 @@ export async function updateTimeOff(db: Database, clinicId: string, id: string, 
 export async function deleteTimeOff(db: Database, clinicId: string, id: string, actorUserId: string) { const rows = await db`with removed as (delete from dentist_time_off where clinic_id = ${clinicId} and id = ${id} returning id), audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) select ${clinicId}, ${actorUserId}, 'DENTIST_TIME_OFF_DELETED', 'dentist_time_off', id::text from removed) select * from removed`; return Boolean(rows[0]); }
 
 export async function recordAuditEvent(db: Database, clinicId: string, actorUserId: string, action: string, resourceType: string, resourceId?: string, metadata: Record<string, string | number | boolean | null> = {}) {
-  await db`insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id, metadata) values(${clinicId}, ${actorUserId}, ${action}, ${resourceType}, ${resourceId ?? null}, ${JSON.stringify(metadata)}::jsonb)`;
+  await db`insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id, metadata) values(${clinicId}, ${actorUserId}, ${action}, ${resourceType}, ${resourceId ?? null}, ${JSON.stringify(metadata)}::text::jsonb)`;
 }
 
 export async function createPatient(db: Database, clinicId: string, userId: string, input: CreatePatientInput) {

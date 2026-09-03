@@ -16,6 +16,7 @@ describe.sequential('timezone-safe availability', () => {
   beforeAll(async () => {
     await sql`insert into users(id, name, email, email_verified) values(${userId}, 'Availability User', ${`${suffix}@example.test`}, true)`;
     await sql`insert into clinics(id, name, slug, created_by) values(${clinicId}, 'Availability Clinic', ${`availability-${suffix}`}, ${userId})`;
+    await sql`insert into subscriptions(clinic_id, plan, status) values(${clinicId}, 'STARTER', 'ACTIVE')`;
     await sql`insert into clinic_settings(clinic_id, slot_interval_minutes) values(${clinicId}, 30)`;
     await sql`insert into clinic_locations(id, clinic_id, name, timezone) values
       (${newYorkId}, ${clinicId}, 'New York', 'America/New_York'),

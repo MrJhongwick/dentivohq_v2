@@ -14,7 +14,7 @@ describe('append-only audit logs', () => {
     await sql`insert into users(id, name, email, email_verified) values(${userId}, 'Audit User', ${`${suffix}@example.test`}, true)`;
     await sql`insert into clinics(id, name, slug, created_by) values(${clinicId}, 'Audit Clinic', ${`audit-${suffix}`}, ${userId})`;
     const rows = await sql`insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id, metadata)
-      values(${clinicId}, ${userId}, 'PATIENT_RECORD_VIEWED', 'clinic_patient', ${randomUUID()}, ${JSON.stringify({ source: 'test', filtered: true })}::jsonb) returning id`;
+      values(${clinicId}, ${userId}, 'PATIENT_RECORD_VIEWED', 'clinic_patient', ${randomUUID()}, ${JSON.stringify({ source: 'test', filtered: true })}::text::jsonb) returning id`;
     auditId = String(rows[0]!.id);
   });
 

@@ -26,12 +26,13 @@ describe.sequential('notification job leases', () => {
   afterAll(async () => { await sql`delete from clinics where id = ${clinicId}`; await sql`delete from users where id = ${userId}`; await sql.end(); });
 
   it('reclaims an expired lease and rejects completion by the stale worker', async () => {
-    const first = await sql`select * from claim_notification_jobs(1)`;
-    const jobId = String(first[0]!.job_id); const staleToken = String(first[0]!.lease_token);
-    expect(String(first[0]!.body_text)).toContain('Asia/Manila');
+    const first = await sql`select * from claim_notification_jobs(100)`;
+    const claimed = first.find((job) => String(job.clinic_id) === clinicId)!;
+    const jobId = String(claimed.job_id); const staleToken = String(claimed.lease_token);
+    expect(String(claimed.body_text)).toContain('Asia/Manila');
     await sql`update notification_jobs set lease_expires_at = now() - interval '1 second' where id = ${jobId}`;
-    const reclaimed = await sql`select * from claim_notification_jobs(1)`;
-    const currentToken = String(reclaimed[0]!.lease_token);
+    const reclaimed = await sql`select * from claim_notification_jobs(100)`;
+    const currentToken = String(reclaimed.find((job) => String(job.job_id) === jobId)!.lease_token);
     expect(currentToken).not.toBe(staleToken);
     expect(await complete(jobId, staleToken)).toHaveLength(0);
     expect(await complete(jobId, currentToken)).toHaveLength(1);
