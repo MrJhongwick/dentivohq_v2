@@ -8,6 +8,8 @@ describe.sequential('appointment idempotency', () => {
   const suffix = randomUUID().slice(0, 8);
   const userId = `idempotency-user-${suffix}`;
   const clinicId = randomUUID();
+  const otherClinicId = randomUUID();
+  const otherProfileId = randomUUID();
   const locationId = randomUUID();
   const dentistId = randomUUID();
   const serviceId = randomUUID();
@@ -29,14 +31,18 @@ describe.sequential('appointment idempotency', () => {
 
   beforeAll(async () => {
     await sql`insert into users(id, name, email, email_verified) values(${userId}, 'Idempotency User', ${`${suffix}@example.test`}, true)`;
-    await sql`insert into clinics(id, name, slug, created_by) values(${clinicId}, 'Idempotency Clinic', ${clinicSlug}, ${userId})`;
+    await sql`insert into clinics(id, name, slug, created_by) values
+      (${clinicId}, 'Idempotency Clinic', ${clinicSlug}, ${userId}),
+      (${otherClinicId}, 'Other Clinic', ${`other-${suffix}`}, ${userId})`;
     await sql`insert into clinic_members(clinic_id, user_id, role, status) values(${clinicId}, ${userId}, 'CLINIC_OWNER', 'ACTIVE')`;
     await sql`insert into clinic_locations(id, clinic_id, name, timezone) values(${locationId}, ${clinicId}, 'Main', 'UTC')`;
     await sql`insert into dentists(id, clinic_id, display_name) values(${dentistId}, ${clinicId}, 'Dr Retry')`;
     await sql`insert into services(id, clinic_id, name, duration_minutes) values(${serviceId}, ${clinicId}, 'Retry-safe visit', 30)`;
     await sql`insert into dentist_location_assignments(clinic_id, dentist_id, location_id) values(${clinicId}, ${dentistId}, ${locationId})`;
     await sql`insert into dentist_services(clinic_id, dentist_id, service_id) values(${clinicId}, ${dentistId}, ${serviceId})`;
-    await sql`insert into patient_profiles(id, display_name, email) values(${profileId}, 'Staff Patient', ${patientEmail})`;
+    await sql`insert into patient_profiles(id, clinic_id, display_name, email) values(${profileId}, ${clinicId}, 'Staff Patient', ${patientEmail})`;
+    await sql`insert into patient_profiles(id, clinic_id, display_name, email, phone)
+      values(${otherProfileId}, ${otherClinicId}, 'Original Other-clinic Name', ${publicEmail}, '+15555550999')`;
     await sql`insert into clinic_patients(id, clinic_id, patient_profile_id) values(${clinicPatientId}, ${clinicId}, ${profileId})`;
     for (const startsAt of [staffStart, publicStart, rescheduleStart]) {
       const date = startsAt.toISOString().slice(0, 10);
@@ -46,8 +52,7 @@ describe.sequential('appointment idempotency', () => {
   });
 
   afterAll(async () => {
-    await sql`delete from clinics where id = ${clinicId}`;
-    await sql`delete from patient_profiles where email in (${patientEmail}, ${publicEmail})`;
+    await sql`delete from clinics where id in (${clinicId}, ${otherClinicId})`;
     await sql`delete from users where id = ${userId}`;
     await sql.end();
   });
@@ -73,6 +78,12 @@ describe.sequential('appointment idempotency', () => {
     const first = await book();
     const retry = await book();
     expect(retry[0]?.id).toBe(first[0]?.id);
+    const profiles = await sql`select clinic_id, display_name, phone from patient_profiles where email = ${publicEmail} order by clinic_id`;
+    expect(profiles).toHaveLength(2);
+    expect(profiles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ clinic_id: otherClinicId, display_name: 'Original Other-clinic Name', phone: '+15555550999' }),
+      expect.objectContaining({ clinic_id: clinicId, display_name: 'Public Patient', phone: '+15555550100' })
+    ]));
   });
 
   it('returns the replacement appointment on a rescheduling retry', async () => {

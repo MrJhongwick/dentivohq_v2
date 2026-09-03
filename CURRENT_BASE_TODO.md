@@ -135,10 +135,11 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Status: Complete. Staff booking, public booking, and rescheduling require clinic-scoped idempotency keys and serialize matching requests in PostgreSQL.
   - Evidence: `0005_booking_idempotency.sql` stores request fingerprints and original appointment IDs; matching retries return the original result while mismatched reuse is rejected.
 
-- [ ] **SCH-005 · P0 — Fix cross-clinic patient identity mutation risk**
+- [x] **SCH-005 · P0 — Fix cross-clinic patient identity mutation risk**
   - Define the intended cross-clinic patient identity model and prevent anonymous public booking from overwriting another clinic's shared patient identity data.
   - Acceptance: A public booking can never modify a patient profile owned or previously established through another clinic without explicit authorization.
-  - Evidence: `patient_profiles.email` is globally unique, and `book_public_appointment` updates the matching profile's name and phone.
+  - Status: Complete. Patient profiles are tenant-owned and the database rejects cross-clinic profile links; anonymous booking never updates an existing profile.
+  - Evidence: `0006_clinic_scoped_patient_profiles.sql` scopes email uniqueness to each clinic, adds a composite tenant foreign key, and isolates public-booking identity resolution by clinic.
 
 - [ ] **SCH-006 · P1 — Expand scheduling edge-case tests**
   - Cover DST transitions, effective-date bounds, partial-day exceptions, time off, overlapping schedule rows, inactive resources, and service-duration boundaries.

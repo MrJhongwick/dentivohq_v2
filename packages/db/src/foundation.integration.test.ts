@@ -19,7 +19,7 @@ describe('PostgreSQL tenant and booking safeguards', () => {
     await sql`insert into clinic_locations(id, clinic_id, name, timezone) values(${location}, ${clinicA}, 'Main', 'UTC')`;
     await sql`insert into dentists(id, clinic_id, display_name) values(${dentist}, ${clinicA}, 'Dr Test')`;
     await sql`insert into services(id, clinic_id, name, duration_minutes) values(${service}, ${clinicA}, 'Consultation', 30)`;
-    await sql`insert into patient_profiles(id, display_name, email) values(${profile}, 'Test Patient', ${`patient-${suffix}@example.test`})`;
+    await sql`insert into patient_profiles(id, clinic_id, display_name, email) values(${profile}, ${clinicA}, 'Test Patient', ${`patient-${suffix}@example.test`})`;
     await sql`insert into clinic_patients(id, clinic_id, patient_profile_id) values(${patient}, ${clinicA}, ${profile})`;
   });
 

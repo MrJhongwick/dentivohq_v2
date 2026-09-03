@@ -152,8 +152,8 @@ export async function createSchedule(db: Database, clinicId: string, userId: str
 export async function createPatient(db: Database, clinicId: string, userId: string, input: CreatePatientInput) {
   const rows = await db`
     with profile as (
-      insert into patient_profiles(display_name, email, phone) values(${input.displayName}, ${input.email ?? null}, ${input.phone ?? null})
-      on conflict(email) do update set display_name = excluded.display_name, phone = coalesce(excluded.phone, patient_profiles.phone)
+      insert into patient_profiles(clinic_id, display_name, email, phone) values(${clinicId}, ${input.displayName}, ${input.email ?? null}, ${input.phone ?? null})
+      on conflict(clinic_id, email) do update set display_name = excluded.display_name, phone = coalesce(excluded.phone, patient_profiles.phone)
       returning id, display_name, email, phone
     ), clinic_patient as (
       insert into clinic_patients(clinic_id, patient_profile_id) select ${clinicId}, id from profile
