@@ -1,26 +1,34 @@
-import { createAuth, resolveAuthorizedMembership, type DentivoAuth, type Permission } from '@dentivohq/auth';
+import { createAuth, permissionForAppointmentStatus, resolveAuthorizedMembership, type DentivoAuth, type Permission } from '@dentivohq/auth';
 import { parseServerEnv, type ServerEnv } from '@dentivohq/config';
 import {
-  acceptStaffInvitation, assignDentistLocation, assignDentistService, createAppointment, createClinic, createDatabase, createDentist, createFileMetadata, createLocation, createPatient,
-  createPublicAppointment, createSchedule, createService, createStaffInvitation, deleteFileMetadata,
-  findFileMetadata, getClinicDashboardOverview, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
-  listUserClinics, rescheduleAppointment, updateAppointmentStatus, type Database
+  abandonFileMetadata, acceptStaffInvitation, activateFileMetadata, assignDentistLocation, assignDentistService, beginFileDeletion,
+  createAppointment, createClinic, createDatabase, createDentist, createLocation, createPatient,
+  createPublicAppointment, createSchedule, createService, createStaffInvitation, finalizeFileDeletion,
+  fileOwnerBelongsToClinic, findFileMetadata, getClinicDashboardOverview, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
+  listUserClinics, reserveFileMetadata, rescheduleAppointment, updateAppointmentStatus, type Database
 } from '@dentivohq/db';
 import {
   acceptInvitationSchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
   createLocationSchema, createPatientSchema, createScheduleSchema, createServiceSchema, inviteStaffSchema,
-  dentistAssignmentSchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, uuidSchema
+  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, uuidSchema
 } from '@dentivohq/validation';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import { AppError, normalizeError } from './errors';
 import { createEmailSender } from './services/email';
+import { reconcileFileStorage } from './services/files';
 import { processNotificationJobs } from './services/notifications';
 
 type AuthSession = Awaited<ReturnType<DentivoAuth['api']['getSession']>>;
 type Variables = { runtime: ServerEnv; db: Database; auth: DentivoAuth; authSession: NonNullable<AuthSession> };
-type AppBindings = Env;
+type AppBindings = {
+  UPLOADS: R2Bucket;
+  PUBLIC_BOOKING_RATE_LIMIT: {
+    limit(options: { key: string }): Promise<{ success: boolean }>;
+  };
+  [key: string]: unknown;
+};
 type AppContext = Context<{ Bindings: AppBindings; Variables: Variables }>;
 const app = new Hono<{ Bindings: AppBindings; Variables: Variables }>();
 
@@ -35,7 +43,7 @@ app.use('*', async (c, next) => {
 app.use('*', cors({
   origin: (origin, c) => c.get('runtime').CORS_ORIGINS.includes(origin) ? origin : '',
   credentials: true,
-  allowHeaders: ['Content-Type', 'Authorization'],
+  allowHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
   allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']
 }));
 
@@ -56,10 +64,20 @@ function requireClinicPermission(permission: Permission): MiddlewareHandler<{ Bi
   };
 }
 
+async function assertClinicPermission(c: AppContext, clinicId: string, permission: Permission) {
+  const session = c.get('authSession');
+  const membership = await resolveAuthorizedMembership(c.get('db'), session.user.id, clinicId, permission);
+  if (!membership) throw new AppError(403, 'CLINIC_ACCESS_DENIED', 'You do not have access to this clinic.');
+}
+
 async function enforcePublicRateLimit(c: AppContext) {
   const key = `booking:${c.req.param('clinicSlug') ?? 'unknown'}`;
   const { success } = await c.env.PUBLIC_BOOKING_RATE_LIMIT.limit({ key });
   if (!success) throw new AppError(429, 'RATE_LIMITED', 'Too many booking requests. Please try again shortly.');
+}
+
+function getIdempotencyKey(c: AppContext) {
+  return idempotencyKeySchema.parse(c.req.header('Idempotency-Key'));
 }
 
 app.get('/', (c) => c.json({ data: { name: 'DentivoHQ API', status: 'ok' } }));
@@ -149,7 +167,7 @@ app.get('/api/v1/clinics/:clinicId/dashboard', requireSession, requireClinicPerm
 app.post('/api/v1/clinics/:clinicId/appointments', requireSession, requireClinicPermission('appointment.create'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const body = createAppointmentSchema.parse(await c.req.json());
-  return c.json({ data: await createAppointment(c.get('db'), c.get('authSession').user.id, clinicId, body) }, 201);
+  return c.json({ data: await createAppointment(c.get('db'), c.get('authSession').user.id, clinicId, body, getIdempotencyKey(c)) }, 201);
 });
 
 app.get('/api/v1/clinics/:clinicId/availability', requireSession, requireClinicPermission('appointment.read'), async (c) => {
@@ -157,10 +175,11 @@ app.get('/api/v1/clinics/:clinicId/availability', requireSession, requireClinicP
   return c.json({ data: await listAvailability(c.get('db'), clinicId, availabilityQuerySchema.parse(c.req.query())) });
 });
 
-app.patch('/api/v1/clinics/:clinicId/appointments/:appointmentId/status', requireSession, requireClinicPermission('appointment.update'), async (c) => {
+app.patch('/api/v1/clinics/:clinicId/appointments/:appointmentId/status', requireSession, async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const appointmentId = uuidSchema.parse(c.req.param('appointmentId'));
   const body = updateAppointmentStatusSchema.parse(await c.req.json());
+  await assertClinicPermission(c, clinicId, permissionForAppointmentStatus(body.status));
   const appointment = await updateAppointmentStatus(c.get('db'), c.get('authSession').user.id, clinicId, appointmentId, body.status);
   if (!appointment) throw new AppError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
   return c.json({ data: appointment });
@@ -170,7 +189,7 @@ app.post('/api/v1/clinics/:clinicId/appointments/:appointmentId/reschedule', req
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const appointmentId = uuidSchema.parse(c.req.param('appointmentId'));
   const body = rescheduleAppointmentSchema.parse(await c.req.json());
-  const appointment = await rescheduleAppointment(c.get('db'), c.get('authSession').user.id, clinicId, appointmentId, body);
+  const appointment = await rescheduleAppointment(c.get('db'), c.get('authSession').user.id, clinicId, appointmentId, body, getIdempotencyKey(c));
   if (!appointment) throw new AppError(404, 'APPOINTMENT_NOT_FOUND', 'Appointment not found.');
   return c.json({ data: appointment }, 201);
 });
@@ -190,7 +209,7 @@ app.get('/api/v1/public/clinics/:clinicSlug/availability', async (c) => {
 
 app.post('/api/v1/public/clinics/:clinicSlug/appointments', async (c) => {
   await enforcePublicRateLimit(c);
-  const appointment = await createPublicAppointment(c.get('db'), c.req.param('clinicSlug'), publicBookingSchema.parse(await c.req.json()));
+  const appointment = await createPublicAppointment(c.get('db'), c.req.param('clinicSlug'), publicBookingSchema.parse(await c.req.json()), getIdempotencyKey(c));
   return c.json({ data: { id: appointment.id, startsAt: appointment.startsAt, endsAt: appointment.endsAt, status: appointment.status } }, 201);
 });
 
@@ -200,14 +219,25 @@ app.post('/api/v1/clinics/:clinicId/files', requireSession, requireClinicPermiss
   const body = await c.req.parseBody();
   const file = body.file;
   const ownerId = uuidSchema.parse(body.ownerId);
-  const ownerType = String(body.ownerType ?? 'patient');
+  const ownerType = fileOwnerTypeSchema.parse(body.ownerType);
   if (!(file instanceof File)) throw new AppError(400, 'FILE_REQUIRED', 'A file is required.');
   if (file.size > 10 * 1024 * 1024) throw new AppError(413, 'FILE_TOO_LARGE', 'Files must not exceed 10 MB.');
   if (!new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']).has(file.type)) throw new AppError(415, 'FILE_TYPE_NOT_ALLOWED', 'This file type is not allowed.');
+  if (!await fileOwnerBelongsToClinic(c.get('db'), clinicId, ownerType, ownerId)) {
+    throw new AppError(404, 'FILE_OWNER_NOT_FOUND', 'The file owner was not found in this clinic.');
+  }
   const fileId = crypto.randomUUID();
-  const objectKey = `clinics/${clinicId}/files/${fileId}`;
-  await c.env.UPLOADS.put(objectKey, file.stream(), { httpMetadata: { contentType: file.type }, customMetadata: { clinicId, fileId } });
-  const metadata = await createFileMetadata(c.get('db'), { clinicId, ownerId, ownerType, objectKey, bucket: 'dentivohq-uploads', mimeType: file.type, sizeBytes: file.size, createdBy: c.get('authSession').user.id });
+  const objectKey = `clinics/${clinicId}/${ownerType.toLowerCase()}/${ownerId}/${fileId}`;
+  const pending = await reserveFileMetadata(c.get('db'), { clinicId, ownerId, ownerType, objectKey, bucket: 'UPLOADS', mimeType: file.type, sizeBytes: file.size, createdBy: c.get('authSession').user.id });
+  if (!pending) throw new AppError(500, 'FILE_RESERVATION_FAILED', 'The file upload could not be started.');
+  try {
+    await c.env.UPLOADS.put(objectKey, file.stream(), { httpMetadata: { contentType: file.type }, customMetadata: { clinicId, fileId } });
+  } catch (error) {
+    await abandonFileMetadata(c.get('db'), clinicId, String(pending.id)).catch(() => undefined);
+    throw error;
+  }
+  const metadata = await activateFileMetadata(c.get('db'), clinicId, String(pending.id));
+  if (!metadata) throw new AppError(500, 'FILE_ACTIVATION_FAILED', 'The file upload could not be completed.');
   return c.json({ data: metadata }, 201);
 });
 
@@ -223,10 +253,10 @@ app.get('/api/v1/clinics/:clinicId/files/:fileId', requireSession, requireClinic
 app.delete('/api/v1/clinics/:clinicId/files/:fileId', requireSession, requireClinicPermission('patient.update'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const fileId = uuidSchema.parse(c.req.param('fileId'));
-  const metadata = await findFileMetadata(c.get('db'), clinicId, fileId);
-  if (!metadata) throw new AppError(404, 'FILE_NOT_FOUND', 'File not found.');
+  const metadata = await beginFileDeletion(c.get('db'), clinicId, fileId);
+  if (!metadata) return c.body(null, 204);
   await c.env.UPLOADS.delete(String(metadata.object_key));
-  await deleteFileMetadata(c.get('db'), clinicId, fileId, c.get('authSession').user.id);
+  await finalizeFileDeletion(c.get('db'), clinicId, fileId, c.get('authSession').user.id);
   return c.body(null, 204);
 });
 
@@ -249,6 +279,9 @@ export default {
   },
   scheduled(_controller, env, context) {
     const runtime = parseServerEnv(env as unknown as Record<string, unknown>);
-    context.waitUntil(processNotificationJobs(runtime));
+    context.waitUntil(Promise.all([
+      processNotificationJobs(runtime),
+      reconcileFileStorage(createDatabase(runtime.DATABASE_URL), env.UPLOADS)
+    ]).then(() => undefined));
   }
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<AppBindings>;

@@ -1,4 +1,4 @@
-import type { AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput } from '@dentivohq/validation';
+import type { AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, FileOwnerType, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput } from '@dentivohq/validation';
 import type { AppointmentRecord, ClinicMembership } from './types';
 import type { Database } from './client';
 
@@ -152,8 +152,8 @@ export async function createSchedule(db: Database, clinicId: string, userId: str
 export async function createPatient(db: Database, clinicId: string, userId: string, input: CreatePatientInput) {
   const rows = await db`
     with profile as (
-      insert into patient_profiles(display_name, email, phone) values(${input.displayName}, ${input.email ?? null}, ${input.phone ?? null})
-      on conflict(email) do update set display_name = excluded.display_name, phone = coalesce(excluded.phone, patient_profiles.phone)
+      insert into patient_profiles(clinic_id, display_name, email, phone) values(${clinicId}, ${input.displayName}, ${input.email ?? null}, ${input.phone ?? null})
+      on conflict(clinic_id, email) do update set display_name = excluded.display_name, phone = coalesce(excluded.phone, patient_profiles.phone)
       returning id, display_name, email, phone
     ), clinic_patient as (
       insert into clinic_patients(clinic_id, patient_profile_id) select ${clinicId}, id from profile
@@ -293,11 +293,11 @@ export async function getClinicDashboardOverview(db: Database, clinicId: string)
   };
 }
 
-export async function createAppointment(db: Database, actorUserId: string, clinicId: string, input: CreateAppointmentInput) {
+export async function createAppointment(db: Database, actorUserId: string, clinicId: string, input: CreateAppointmentInput, idempotencyKey: string) {
   const rows = await db`
-    select * from book_clinic_appointment(
+    select * from idempotent_book_clinic_appointment(
       ${actorUserId}, ${clinicId}, ${input.locationId}, ${input.dentistId}, ${input.clinicPatientId},
-      ${input.serviceId}, ${input.startsAt}::timestamptz, ${input.notes ?? null}
+      ${input.serviceId}, ${input.startsAt}::timestamptz, ${input.notes ?? null}, ${idempotencyKey}
     )
   `;
   return mapAppointment(rows[0] as Record<string, unknown>);
@@ -317,8 +317,8 @@ export async function updateAppointmentStatus(db: Database, actorUserId: string,
   return rows[0] ? mapAppointment(rows[0] as Record<string, unknown>) : null;
 }
 
-export async function rescheduleAppointment(db: Database, actorUserId: string, clinicId: string, appointmentId: string, input: RescheduleAppointmentInput) {
-  const rows = await db`select * from reschedule_appointment(${actorUserId}, ${clinicId}, ${appointmentId}, ${input.startsAt}::timestamptz)`;
+export async function rescheduleAppointment(db: Database, actorUserId: string, clinicId: string, appointmentId: string, input: RescheduleAppointmentInput, idempotencyKey: string) {
+  const rows = await db`select * from idempotent_reschedule_appointment(${actorUserId}, ${clinicId}, ${appointmentId}, ${input.startsAt}::timestamptz, ${idempotencyKey})`;
   return rows[0] ? mapAppointment(rows[0] as Record<string, unknown>) : null;
 }
 
@@ -334,11 +334,11 @@ export async function getPublicBookingConfig(db: Database, clinicSlug: string) {
   return { clinic, locations, services, dentists };
 }
 
-export async function createPublicAppointment(db: Database, clinicSlug: string, input: PublicBookingInput) {
+export async function createPublicAppointment(db: Database, clinicSlug: string, input: PublicBookingInput, idempotencyKey: string) {
   const rows = await db`
-    select * from book_public_appointment(
+    select * from idempotent_book_public_appointment(
       ${clinicSlug}, ${input.locationId}, ${input.dentistId}, ${input.serviceId}, ${input.startsAt}::timestamptz,
-      ${input.patient.name}, ${input.patient.email}, ${input.patient.phone}
+      ${input.patient.name}, ${input.patient.email}, ${input.patient.phone}, ${idempotencyKey}
     )
   `;
   return mapAppointment(rows[0] as Record<string, unknown>);
@@ -358,31 +358,91 @@ export async function getPlatformOverview(db: Database, userId: string) {
   return { clinics: Number(clinics[0]?.value ?? 0), users: Number(users[0]?.value ?? 0), appointmentsToday: Number(appointments[0]?.value ?? 0) };
 }
 
-export async function createFileMetadata(db: Database, input: { clinicId: string; ownerType: string; ownerId: string; bucket: string; objectKey: string; mimeType: string; sizeBytes: number; createdBy: string }) {
+export async function fileOwnerBelongsToClinic(db: Database, clinicId: string, ownerType: FileOwnerType, ownerId: string) {
+  const rows = await db`select file_owner_belongs_to_clinic(${clinicId}, ${ownerType}::file_owner_type, ${ownerId}) as belongs`;
+  return rows[0]?.belongs === true;
+}
+
+type FileMetadataInput = { clinicId: string; ownerType: FileOwnerType; ownerId: string; bucket: string; objectKey: string; mimeType: string; sizeBytes: number; createdBy: string };
+
+export async function reserveFileMetadata(db: Database, input: FileMetadataInput) {
   const rows = await db`
-    with inserted as (
-      insert into file_objects(clinic_id, owner_type, owner_id, bucket, object_key, mime_type, size_bytes, created_by)
-      values(${input.clinicId}, ${input.ownerType}, ${input.ownerId}, ${input.bucket}, ${input.objectKey}, ${input.mimeType}, ${input.sizeBytes}, ${input.createdBy})
-      returning *
-    ), audited as (
-      insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id)
-      select ${input.clinicId}, ${input.createdBy}, 'FILE_UPLOADED', 'file', inserted.id::text from inserted
-    ) select * from inserted
+    insert into file_objects(clinic_id, owner_type, owner_id, bucket, object_key, mime_type, size_bytes, created_by, status)
+    values(${input.clinicId}, ${input.ownerType}::file_owner_type, ${input.ownerId}, ${input.bucket}, ${input.objectKey}, ${input.mimeType}, ${input.sizeBytes}, ${input.createdBy}, 'PENDING_UPLOAD')
+    returning *
   `;
   return rows[0] ?? null;
 }
 
-export async function findFileMetadata(db: Database, clinicId: string, fileId: string) {
-  const rows = await db`select * from file_objects where id = ${fileId} and clinic_id = ${clinicId} limit 1`;
+export async function activateFileMetadata(db: Database, clinicId: string, fileId: string) {
+  const rows = await db`
+    with activated as (
+      update file_objects set status = 'ACTIVE'
+      where id = ${fileId} and clinic_id = ${clinicId} and status = 'PENDING_UPLOAD'
+      returning *
+    ), audited as (
+      insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id)
+      select clinic_id, created_by, 'FILE_UPLOADED', 'file', id::text from activated
+    ) select * from activated
+  `;
   return rows[0] ?? null;
 }
 
-export async function deleteFileMetadata(db: Database, clinicId: string, fileId: string, actorUserId: string) {
-  const rows = await db.transaction((tx) => [
-    tx`delete from file_objects where id = ${fileId} and clinic_id = ${clinicId} returning object_key`,
-    tx`insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) values(${clinicId}, ${actorUserId}, 'FILE_DELETED', 'file', ${fileId})`
-  ]);
-  return rows[0]?.[0] ?? null;
+export async function abandonFileMetadata(db: Database, clinicId: string, fileId: string) {
+  await db`delete from file_objects where id = ${fileId} and clinic_id = ${clinicId} and status = 'PENDING_UPLOAD'`;
+}
+
+export async function findFileMetadata(db: Database, clinicId: string, fileId: string) {
+  const rows = await db`select * from file_objects where id = ${fileId} and clinic_id = ${clinicId} and status = 'ACTIVE' limit 1`;
+  return rows[0] ?? null;
+}
+
+export async function beginFileDeletion(db: Database, clinicId: string, fileId: string) {
+  const rows = await db`
+    update file_objects set status = 'DELETE_PENDING'
+    where id = ${fileId} and clinic_id = ${clinicId} and status in ('ACTIVE', 'DELETE_PENDING')
+    returning *
+  `;
+  return rows[0] ?? null;
+}
+
+export async function finalizeFileDeletion(db: Database, clinicId: string, fileId: string, actorUserId?: string) {
+  const rows = await db`
+    with deleted as (
+      delete from file_objects
+      where id = ${fileId} and clinic_id = ${clinicId} and status = 'DELETE_PENDING'
+      returning id, clinic_id, created_by
+    ), audited as (
+      insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id)
+      select clinic_id, ${actorUserId ?? null}, 'FILE_DELETED', 'file', id::text from deleted
+    ) select * from deleted
+  `;
+  return rows[0] ?? null;
+}
+
+export async function listFileMetadataForReconciliation(db: Database, limit = 100) {
+  return db`
+    select * from file_objects
+    where status = 'ACTIVE'
+       or (status in ('PENDING_UPLOAD', 'DELETE_PENDING') and updated_at < now() - interval '10 minutes')
+    order by case status when 'DELETE_PENDING' then 0 when 'PENDING_UPLOAD' then 1 else 2 end, updated_at
+    limit ${limit}
+  `;
+}
+
+export async function findFileMetadataByObjectKey(db: Database, objectKey: string) {
+  const rows = await db`select id from file_objects where object_key = ${objectKey} limit 1`;
+  return rows[0] ?? null;
+}
+
+export async function removeMissingFileMetadata(db: Database, clinicId: string, fileId: string) {
+  await db`
+    with deleted as (
+      delete from file_objects where id = ${fileId} and clinic_id = ${clinicId} returning id, clinic_id
+    )
+    insert into audit_logs(clinic_id, action, resource_type, resource_id)
+    select clinic_id, 'FILE_RECONCILED_MISSING', 'file', id::text from deleted
+  `;
 }
 
 export async function claimNotificationJobs(db: Database, limit = 25) {

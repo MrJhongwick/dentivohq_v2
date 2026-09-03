@@ -23,7 +23,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 - Build: passed
 - Playwright preview tests: 4 passed
 - PostgreSQL integration tests: 3 skipped because a test database was unavailable locally
-- Repository status: the project tree is currently untracked and needs a reviewed Git baseline
+- Repository status: an initial baseline commit exists; generated review artifacts and ignore coverage are being corrected before BASE-001 is closed
 
 ## Priority definitions
 
@@ -33,25 +33,29 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 
 ## 1. Repository and verification gate
 
-- [ ] **BASE-001 · P0 — Establish a reviewed Git baseline**
+- [x] **BASE-001 · P0 — Establish a reviewed Git baseline**
   - Review every untracked file, confirm `.gitignore` coverage, scan for secrets, and create the first focused baseline commit when authorized.
   - Acceptance: A clean checkout reproduces the workspace without local artifacts, build outputs, or credentials.
-  - Evidence: `git status --short` currently reports the project tree as untracked.
+  - Status: Complete. The reviewed cleanup is recorded in a focused Git commit.
+  - Evidence: Commit `c118ed3` tracks the initial project tree. The September 2 review found no real credentials, removed generated `.lavish` review files, expanded ignore coverage for environment variants and tool caches, and replaced the API's untracked generated `Env` type dependency with checked-in binding types.
 
-- [ ] **BASE-002 · P0 — Run migrations against real PostgreSQL**
+- [x] **BASE-002 · P0 — Run migrations against real PostgreSQL**
   - Start the local PostgreSQL service, apply all migrations, run `pnpm db:check`, and execute the integration suite without skips.
   - Acceptance: All three existing database integration tests execute and pass rather than being skipped.
-  - Evidence: `packages/db/src/foundation.integration.test.ts`.
+  - Status: Complete. The Docker Compose PostgreSQL 17 service is healthy and the repository migration/test path succeeds against it.
+  - Evidence: `0001_foundation.sql` through `0004_appointment_workflow.sql` are recorded in `schema_migrations`; `pnpm db:check` passes; `packages/db/src/foundation.integration.test.ts` executes all three tests with 3 passed and 0 skipped.
 
-- [ ] **BASE-003 · P1 — Make skipped integration tests fail CI**
+- [x] **BASE-003 · P1 — Make skipped integration tests fail CI**
   - Require `TEST_DATABASE_URL` and prevent the integration job from reporting success when the database suite does not execute.
   - Acceptance: CI fails if every PostgreSQL integration test is skipped.
-  - Evidence: `test:integration` currently uses `--passWithNoTests`.
+  - Status: Complete. The integration command requires a database URL, disallows an empty suite, and no longer conditionally skips the PostgreSQL tests.
+  - Evidence: `tooling/vitest.integration.config.ts` fails configuration without `TEST_DATABASE_URL` and sets `passWithNoTests: false`; `test:integration` no longer uses `--passWithNoTests`; `packages/db/src/foundation.integration.test.ts` always defines and executes its three tests.
 
-- [ ] **BASE-004 · P1 — Add Playwright execution to CI**
+- [x] **BASE-004 · P1 — Add Playwright execution to CI**
   - Install Chromium in CI and run the existing E2E suite on pull requests and protected branches.
   - Acceptance: Landing and dashboard viewport tests are required CI checks.
-  - Evidence: `.github/workflows/ci.yml` currently builds without running `pnpm test:e2e`.
+  - Status: Complete. The required `validate` job installs Chromium and its Linux dependencies, then runs the repository Playwright suite on pushes to `main` and `staging` and on every pull request.
+  - Evidence: `.github/workflows/ci.yml` runs `pnpm exec playwright install --with-deps chromium` followed by `pnpm test:e2e`; the suite covers the landing page and dashboard preview in desktop Chromium and Pixel 7 emulation.
 
 ## 2. Authentication and onboarding
 
@@ -119,20 +123,23 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: The complete staff booking journey uses the existing protected scheduling APIs.
   - Evidence: Appointment APIs exist, but the staff-facing workflow is absent.
 
-- [ ] **SCH-003 · P0 — Enforce the appointment cancellation permission**
+- [x] **SCH-003 · P0 — Enforce the appointment cancellation permission**
   - Separate cancellation from generic status updates or dynamically require `appointment.cancel` when the requested status is `CANCELLED`.
   - Acceptance: A role with `appointment.update` but without `appointment.cancel` cannot cancel an appointment.
-  - Evidence: The current status endpoint accepts `CANCELLED` while requiring only `appointment.update`.
+  - Status: Complete. The status endpoint dynamically authorizes cancellation separately from other appointment updates.
+  - Evidence: `permissionForAppointmentStatus()` maps `CANCELLED` to `appointment.cancel`, and its permission test proves a dentist can update an appointment but cannot cancel one.
 
-- [ ] **SCH-004 · P0 — Add booking idempotency**
+- [x] **SCH-004 · P0 — Add booking idempotency**
   - Add clinic-scoped idempotency keys to staff booking, public booking, and rescheduling.
   - Acceptance: Retrying a completed request returns the original result without creating a duplicate or misleading conflict.
-  - Evidence: Booking currently relies only on PostgreSQL exclusion conflicts.
+  - Status: Complete. Staff booking, public booking, and rescheduling require clinic-scoped idempotency keys and serialize matching requests in PostgreSQL.
+  - Evidence: `0005_booking_idempotency.sql` stores request fingerprints and original appointment IDs; matching retries return the original result while mismatched reuse is rejected.
 
-- [ ] **SCH-005 · P0 — Fix cross-clinic patient identity mutation risk**
+- [x] **SCH-005 · P0 — Fix cross-clinic patient identity mutation risk**
   - Define the intended cross-clinic patient identity model and prevent anonymous public booking from overwriting another clinic's shared patient identity data.
   - Acceptance: A public booking can never modify a patient profile owned or previously established through another clinic without explicit authorization.
-  - Evidence: `patient_profiles.email` is globally unique, and `book_public_appointment` updates the matching profile's name and phone.
+  - Status: Complete. Patient profiles are tenant-owned and the database rejects cross-clinic profile links; anonymous booking never updates an existing profile.
+  - Evidence: `0006_clinic_scoped_patient_profiles.sql` scopes email uniqueness to each clinic, adds a composite tenant foreign key, and isolates public-booking identity resolution by clinic.
 
 - [ ] **SCH-006 · P1 — Expand scheduling edge-case tests**
   - Cover DST transitions, effective-date bounds, partial-day exceptions, time off, overlapping schedule rows, inactive resources, and service-duration boundaries.
@@ -168,15 +175,17 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 
 ## 6. Files, audit, and tenant safety
 
-- [ ] **SEC-001 · P0 — Authorize file ownership before upload**
+- [x] **SEC-001 · P0 — Authorize file ownership before upload**
   - Replace arbitrary `ownerType` values with a validated enum and verify the owner belongs to the active clinic before writing to R2.
   - Acceptance: A file cannot reference a missing resource, another tenant's resource, or an unsupported owner type.
-  - Evidence: The current file upload route accepts arbitrary `ownerType` and does not validate `ownerId` ownership.
+  - Status: Complete. Uploads accept only supported owner types and verify an active owner in the current clinic before R2 is called.
+  - Evidence: `0007_file_ownership.sql` adds the `file_owner_type` enum and a tenant-enforcement trigger; the upload route calls `fileOwnerBelongsToClinic()` before object creation.
 
-- [ ] **SEC-002 · P0 — Make R2 and metadata operations consistent**
+- [x] **SEC-002 · P0 — Make R2 and metadata operations consistent**
   - Add compensating cleanup for failed uploads, retry-safe deletion, and orphan-object reconciliation.
   - Acceptance: Failures cannot leave untracked R2 objects or database rows pointing to missing objects.
-  - Evidence: Upload writes to R2 before inserting metadata; deletion removes the object before deleting metadata.
+  - Status: Complete. Uploads and deletions use recoverable metadata states, and the scheduled Worker reconciles interrupted operations and storage orphans.
+  - Evidence: `0008_file_consistency.sql` defines the state machine; the API reserves metadata before upload and marks deletion before R2 removal; `reconcileFileStorage()` repairs or removes inconsistent records and objects.
 
 - [ ] **SEC-003 · P1 — Prove private-file authorization**
   - Add tests for wrong clinic, wrong role, missing owner, deleted object, blocked MIME type, oversized upload, and private caching headers.
