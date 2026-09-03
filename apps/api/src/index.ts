@@ -83,6 +83,7 @@ function getIdempotencyKey(c: AppContext) {
 app.get('/', (c) => c.json({ data: { name: 'DentivoHQ API', status: 'ok' } }));
 app.get('/health', (c) => c.json({ data: { status: 'ok' } }));
 app.all('/api/auth/*', (c) => c.get('auth').handler(c.req.raw));
+app.get('/api/v1/auth/capabilities', (c) => c.json({ data: { google: Boolean(c.get('runtime').GOOGLE_CLIENT_ID && c.get('runtime').GOOGLE_CLIENT_SECRET) } }));
 
 app.get('/api/v1/clinics', requireSession, async (c) => c.json({ data: await listUserClinics(c.get('db'), c.get('authSession').user.id) }));
 

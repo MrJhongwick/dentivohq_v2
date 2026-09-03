@@ -69,7 +69,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: Invited staff can authenticate, accept a valid invitation once, and see only the invited clinic.
   - Evidence: Invitation emails generated in `apps/api/src/index.ts` point to a route that the dashboard does not implement.
 
-- [ ] **AUTH-003 · P1 — Expose Google sign-in**
+- [x] **AUTH-003 · P1 — Expose Google sign-in**
   - Add conditional Google OAuth controls to the dashboard authentication screen.
   - Acceptance: Google sign-in appears only when configured and returns to the correct environment-based URL.
   - Evidence: `packages/auth/src/server.ts` configures Google, while `apps/dashboard/src/components/auth-panel.tsx` offers only email/password.
