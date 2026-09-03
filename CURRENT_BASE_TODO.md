@@ -199,7 +199,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 
 ## 7. Platform and deployment readiness
 
-- [ ] **PLAT-001 · P1 — Enforce plan entitlements server-side**
+- [x] **PLAT-001 · P1 — Enforce plan entitlements server-side**
   - Apply plan limits transactionally when creating locations, dentists, and staff memberships.
   - Acceptance: Limit violations return explicit domain errors and cannot be bypassed through direct API calls.
   - Evidence: `planEntitlements` is declared in `packages/config/src/index.ts` but is not enforced.

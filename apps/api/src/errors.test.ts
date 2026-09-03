@@ -16,4 +16,8 @@ describe('API error normalization', () => {
     expect(error.code).toBe('CLINIC_SLUG_TAKEN');
     expect(error.message).toBe('That clinic URL is already in use. Choose another one.');
   });
+
+  it('returns an explicit plan entitlement conflict', () => {
+    expect(normalizeError({ code: 'P0005' })).toMatchObject({ status: 409, code: 'PLAN_LIMIT_REACHED' });
+  });
 });

@@ -18,6 +18,7 @@ export function normalizeError(error: unknown): AppError {
     if (code === 'P0002') return new AppError(404, 'NOT_FOUND', 'The requested resource was not found.');
     if (code === 'P0003') return new AppError(409, 'INVALID_APPOINTMENT_TRANSITION', 'This appointment status change is not allowed.');
     if (code === 'P0004') return new AppError(409, 'IDEMPOTENCY_KEY_REUSED', 'This idempotency key was already used for a different request.');
+    if (code === 'P0005') return new AppError(409, 'PLAN_LIMIT_REACHED', 'Your clinic has reached this plan limit. Upgrade the plan or archive an existing item.');
   }
   return new AppError(500, 'INTERNAL_ERROR', 'An unexpected error occurred.');
 }
