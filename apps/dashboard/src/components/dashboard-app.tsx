@@ -1,13 +1,19 @@
-import { Card, CardContent, EmptyState, Skeleton } from '@dentivohq/ui';
+import { Card, CardContent, Skeleton } from '@dentivohq/ui';
 import { CalendarDays, CreditCard, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { apiRequest, type Clinic, type DashboardOverview } from '../lib/api';
+import { ClinicSetupWizard } from './clinic-setup-wizard';
 import { DashboardSidebar } from './dashboard/dashboard-sidebar';
 import { DashboardTopbar } from './dashboard/dashboard-topbar';
 import type { DashboardPreview, DashboardUser } from './dashboard/dashboard-types';
 import { greetingName } from './dashboard/dashboard-types';
 import { InventoryPanel, QuickActionsPanel, RecentBookingsPanel, RevenuePanel, TodayAppointmentsPanel, TreatmentMixPanel } from './dashboard/dashboard-panels';
 import { MetricCard } from './dashboard/metric-card';
+import { LocationManagement } from './location-management';
+import { DentistManagement } from './dentist-management';
+import { ServiceManagement } from './service-management';
+import { ScheduleManagement } from './schedule-management';
+import { PatientManagement } from './patient-management';
 
 type Props = { user: DashboardUser; preview?: DashboardPreview };
 
@@ -20,6 +26,9 @@ export function DashboardApp({ user, preview }: Props) {
   const [query, setQuery] = useState('');
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [notice, setNotice] = useState('');
+  const [setupClinic, setSetupClinic] = useState<Clinic | undefined>();
+  const [overviewRevision, setOverviewRevision] = useState(0);
+  const [workspace, setWorkspace] = useState<'dashboard' | 'locations' | 'dentists' | 'services' | 'schedules' | 'patients'>('dashboard');
 
   useEffect(() => {
     if (preview) return;
@@ -44,7 +53,7 @@ export function DashboardApp({ user, preview }: Props) {
       if ((caught as Error).name !== 'AbortError') setError(caught instanceof Error ? caught.message : 'Unable to load the dashboard.');
     }).finally(() => setLoading(false));
     return () => controller.abort();
-  }, [currentClinicId, preview]);
+  }, [currentClinicId, overviewRevision, preview]);
 
   const clinic = clinics.find((item) => item.id === currentClinicId) ?? clinics[0];
   const normalizedQuery = query.trim().toLowerCase();
@@ -52,6 +61,11 @@ export function DashboardApp({ user, preview }: Props) {
   const recentBookings = useMemo(() => overview?.recentBookings.filter((appointment) => !normalizedQuery || `${appointment.patientDisplayName} ${appointment.serviceName}`.toLowerCase().includes(normalizedQuery)) ?? [], [normalizedQuery, overview?.recentBookings]);
 
   function handleAction(label: string) {
+    if (label === 'Clinic Settings') { setWorkspace('locations'); return; }
+    if (label === 'Treatments') { setWorkspace('dentists'); return; }
+    if (label === 'Services') { setWorkspace('services'); return; }
+    if (label === 'Schedules') { setWorkspace('schedules'); return; }
+    if (label === 'Patients' || label === 'Add patient') { setWorkspace('patients'); return; }
     if (label === 'Book appointment' && clinic) {
       window.location.assign(`/book/${clinic.slug}`);
       return;
@@ -66,9 +80,37 @@ export function DashboardApp({ user, preview }: Props) {
     setCurrentClinicId(clinicId);
   }
 
-  if (!loading && !clinic) return <main className="mx-auto min-h-screen max-w-2xl px-5 py-20"><Card><CardContent className="p-6"><EmptyState title="Create your first clinic" description="Your account is ready. Clinic onboarding is required before the operational dashboard can load." /></CardContent></Card></main>;
+  if (!loading && (!clinic || setupClinic)) return <ClinicSetupWizard
+    initialClinic={setupClinic}
+    onClinicCreated={(createdClinic) => {
+      setClinics((current) => [...current, createdClinic]);
+      setCurrentClinicId(createdClinic.id);
+      setSetupClinic(createdClinic);
+    }}
+    onComplete={() => {
+      setSetupClinic(undefined);
+      setOverview(null);
+      setLoading(true);
+      setOverviewRevision((current) => current + 1);
+    }}
+  />;
+
+  if (!loading && clinic && !overview?.location && (clinic.role === 'CLINIC_OWNER' || clinic.role === 'CLINIC_ADMIN')) return <ClinicSetupWizard
+    initialClinic={clinic}
+    onClinicCreated={() => undefined}
+    onComplete={() => {
+      setOverview(null);
+      setLoading(true);
+      setOverviewRevision((current) => current + 1);
+    }}
+  />;
 
   const plan = String(overview?.subscription?.plan ?? 'FREE');
+  if (clinic && workspace === 'locations') return <LocationManagement clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
+  if (clinic && workspace === 'dentists') return <DentistManagement clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
+  if (clinic && workspace === 'services') return <ServiceManagement clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
+  if (clinic && workspace === 'schedules') return <ScheduleManagement clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
+  if (clinic && workspace === 'patients') return <PatientManagement clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
   return <div className="dashboard-shell min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[238px_minmax(0,1fr)]">
     <DashboardSidebar clinics={clinics} currentClinicId={currentClinicId} currentPlan={plan} onClinicChange={handleClinicChange} onClose={() => setMobileNavigationOpen(false)} onNavigate={handleAction} open={mobileNavigationOpen} />
     <div className="min-w-0">

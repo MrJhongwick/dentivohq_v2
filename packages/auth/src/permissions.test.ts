@@ -23,4 +23,15 @@ describe('clinic permissions', () => {
     expect(permissionForAppointmentStatus('CONFIRMED')).toBe('appointment.update');
     expect(permissionForAppointmentStatus('CANCELLED')).toBe('appointment.cancel');
   });
+
+  it.each([
+    ['CLINIC_OWNER', 'clinic.settings.update', true],
+    ['CLINIC_ADMIN', 'staff.update', true],
+    ['RECEPTIONIST', 'appointment.create', true],
+    ['RECEPTIONIST', 'clinic.settings.update', false],
+    ['DENTIST', 'patient.create', false],
+    ['DENTAL_ASSISTANT', 'appointment.cancel', false]
+  ] as const)('%s access to %s is %s', (role, permission, expected) => {
+    expect(roleHasPermission(role, permission)).toBe(expected);
+  });
 });

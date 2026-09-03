@@ -59,54 +59,54 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 
 ## 2. Authentication and onboarding
 
-- [ ] **AUTH-001 · P0 — Build the clinic creation wizard**
+- [x] **AUTH-001 · P0 — Build the clinic creation wizard**
   - Connect the dashboard empty state to an operational clinic-creation and initial-setup flow.
   - Acceptance: A verified user can create a clinic and immediately proceed to location setup.
   - Evidence: The API supports clinic creation, but `apps/dashboard/src/components/dashboard-app.tsx` exposes only an empty state.
 
-- [ ] **AUTH-002 · P0 — Complete the invitation acceptance UI**
+- [x] **AUTH-002 · P0 — Complete the invitation acceptance UI**
   - Add the `/accept-invitation` dashboard route and connect it to the invitation acceptance API.
   - Acceptance: Invited staff can authenticate, accept a valid invitation once, and see only the invited clinic.
   - Evidence: Invitation emails generated in `apps/api/src/index.ts` point to a route that the dashboard does not implement.
 
-- [ ] **AUTH-003 · P1 — Expose Google sign-in**
+- [x] **AUTH-003 · P1 — Expose Google sign-in**
   - Add conditional Google OAuth controls to the dashboard authentication screen.
   - Acceptance: Google sign-in appears only when configured and returns to the correct environment-based URL.
   - Evidence: `packages/auth/src/server.ts` configures Google, while `apps/dashboard/src/components/auth-panel.tsx` offers only email/password.
 
-- [ ] **AUTH-004 · P1 — Add password reset, verification, logout, and session UX**
+- [x] **AUTH-004 · P1 — Add password reset, verification, logout, and session UX**
   - Implement screens and recovery actions for password reset, email verification, expired links, sign-out, and expired sessions.
   - Acceptance: Every Better Auth lifecycle state has a deterministic user-facing result and recovery path.
   - Evidence: The Better Auth server behavior exists, but the dashboard has only sign-in and registration UI.
 
-- [ ] **AUTH-005 · P1 — Test real authentication and membership boundaries**
+- [x] **AUTH-005 · P1 — Test real authentication and membership boundaries**
   - Add API integration tests for unauthenticated, suspended, removed, wrong-clinic, and wrong-role requests.
   - Acceptance: Every protected route family proves both allowed and denied access cases.
   - Evidence: Current permission coverage consists of three role-mapping unit tests.
 
 ## 3. Clinic master-data operations
 
-- [ ] **OPS-001 · P0 — Complete location management**
+- [x] **OPS-001 · P0 — Complete location management**
   - Add tenant-scoped list, update, archive, and reactivate endpoints and dashboard screens.
   - Acceptance: Clinic owners and administrators can safely manage multiple timezone-aware locations.
   - Evidence: A location creation endpoint exists, but there are no list or update routes.
 
-- [ ] **OPS-002 · P0 — Complete dentist and assignment management**
+- [x] **OPS-002 · P0 — Complete dentist and assignment management**
   - Add dentist list, edit, and archive workflows plus location and service assignment management.
   - Acceptance: All provider inputs required by availability can be configured without SQL or direct API calls.
   - Evidence: Only dentist creation and assignment POST routes currently exist.
 
-- [ ] **OPS-003 · P0 — Complete service management**
+- [x] **OPS-003 · P0 — Complete service management**
   - Add service list, edit, archive, and reactivate workflows with consistent price and currency handling.
   - Acceptance: Only active and correctly configured services can be offered for booking.
   - Evidence: A service creation endpoint exists, but no management screen or update route exists.
 
-- [ ] **OPS-004 · P0 — Build schedule, exception, and time-off management**
+- [x] **OPS-004 · P0 — Build schedule, exception, and time-off management**
   - Add list, create, update, and remove APIs and UI for recurring schedules, schedule exceptions, and time off.
   - Acceptance: Staff can manage and inspect every availability input through the dashboard.
   - Evidence: `dentist_schedule_exceptions` and `dentist_time_off` exist in the schema without operational endpoints.
 
-- [ ] **OPS-005 · P0 — Complete patient management**
+- [x] **OPS-005 · P0 — Complete patient management**
   - Add tenant-scoped patient list, search, details, update, archive, deduplication, and pagination.
   - Acceptance: Staff can reliably find or create a patient before booking.
   - Evidence: A patient creation endpoint exists, but there are no patient list or search routes.
@@ -199,7 +199,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 
 ## 7. Platform and deployment readiness
 
-- [ ] **PLAT-001 · P1 — Enforce plan entitlements server-side**
+- [x] **PLAT-001 · P1 — Enforce plan entitlements server-side**
   - Apply plan limits transactionally when creating locations, dentists, and staff memberships.
   - Acceptance: Limit violations return explicit domain errors and cannot be bypassed through direct API calls.
   - Evidence: `planEntitlements` is declared in `packages/config/src/index.ts` but is not enforced.
