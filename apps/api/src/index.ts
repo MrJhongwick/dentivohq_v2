@@ -8,9 +8,9 @@ import {
   listDentists, listLocations, listPatients, listSchedulingRules, listServices, listUserClinics, reserveFileMetadata, rescheduleAppointment, unassignDentistLocation, unassignDentistService, updateAppointmentStatus, updateDentist, updateLocation, updatePatient, updateSchedule, updateScheduleException, updateService, updateTimeOff, type Database
 } from '@dentivohq/db';
 import {
-  acceptInvitationSchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
+  acceptInvitationSchema, appointmentListQuerySchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
   createLocationSchema, createPatientSchema, createScheduleExceptionSchema, createScheduleSchema, createServiceSchema, createTimeOffSchema, inviteStaffSchema,
-  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, patientListQuerySchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateDentistSchema, updateLocationSchema, updatePatientSchema, updateScheduleExceptionSchema, updateScheduleSchema, updateServiceSchema, updateTimeOffSchema, uuidSchema
+  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, patientListQuerySchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateDentistSchema, updateLocationSchema, updatePatientSchema, updateScheduleExceptionSchema, updateScheduleSchema, updateServiceSchema, updateTimeOffSchema, uuidSchema
 } from '@dentivohq/validation';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
@@ -219,8 +219,9 @@ app.patch('/api/v1/clinics/:clinicId/patients/:patientId', requireSession, requi
 
 app.get('/api/v1/clinics/:clinicId/appointments', requireSession, requireClinicPermission('appointment.read'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
-  const { page, pageSize } = paginationSchema.parse(c.req.query());
-  const result = await listAppointments(c.get('db'), clinicId, page, pageSize);
+  const filters = appointmentListQuerySchema.parse(c.req.query());
+  const { page, pageSize } = filters;
+  const result = await listAppointments(c.get('db'), clinicId, filters);
   return c.json({ data: result.data, meta: { page, pageSize, total: result.total } });
 });
 

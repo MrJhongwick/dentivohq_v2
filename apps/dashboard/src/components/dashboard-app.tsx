@@ -14,6 +14,7 @@ import { DentistManagement } from './dentist-management';
 import { ServiceManagement } from './service-management';
 import { ScheduleManagement } from './schedule-management';
 import { PatientManagement } from './patient-management';
+import { AppointmentWorkspace } from './appointment-workspace';
 
 type Props = { user: DashboardUser; preview?: DashboardPreview };
 
@@ -28,7 +29,7 @@ export function DashboardApp({ user, preview }: Props) {
   const [notice, setNotice] = useState('');
   const [setupClinic, setSetupClinic] = useState<Clinic | undefined>();
   const [overviewRevision, setOverviewRevision] = useState(0);
-  const [workspace, setWorkspace] = useState<'dashboard' | 'locations' | 'dentists' | 'services' | 'schedules' | 'patients'>('dashboard');
+  const [workspace, setWorkspace] = useState<'dashboard' | 'locations' | 'dentists' | 'services' | 'schedules' | 'patients' | 'appointments'>('dashboard');
 
   useEffect(() => {
     if (preview) return;
@@ -66,6 +67,7 @@ export function DashboardApp({ user, preview }: Props) {
     if (label === 'Services') { setWorkspace('services'); return; }
     if (label === 'Schedules') { setWorkspace('schedules'); return; }
     if (label === 'Patients' || label === 'Add patient') { setWorkspace('patients'); return; }
+    if (label === 'Appointments' || label === 'Calendar') { setWorkspace('appointments'); return; }
     if (label === 'Book appointment' && clinic) {
       window.location.assign(`/book/${clinic.slug}`);
       return;
@@ -111,6 +113,7 @@ export function DashboardApp({ user, preview }: Props) {
   if (clinic && workspace === 'services') return <ServiceManagement clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
   if (clinic && workspace === 'schedules') return <ScheduleManagement clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
   if (clinic && workspace === 'patients') return <PatientManagement clinicId={clinic.id} onClose={() => setWorkspace('dashboard')} />;
+  if (clinic && workspace === 'appointments') return <AppointmentWorkspace clinicId={clinic.id} onBook={() => window.location.assign(`/book/${clinic.slug}`)} onClose={() => setWorkspace('dashboard')} />;
   return <div className="dashboard-shell min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[238px_minmax(0,1fr)]">
     <DashboardSidebar clinics={clinics} currentClinicId={currentClinicId} currentPlan={plan} onClinicChange={handleClinicChange} onClose={() => setMobileNavigationOpen(false)} onNavigate={handleAction} open={mobileNavigationOpen} />
     <div className="min-w-0">

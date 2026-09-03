@@ -1,4 +1,4 @@
-import type { AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, FileOwnerType, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput, UpdateDentistInput, UpdateLocationInput, UpdateServiceInput } from '@dentivohq/validation';
+import type { AppointmentListQuery, AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, FileOwnerType, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput, UpdateDentistInput, UpdateLocationInput, UpdateServiceInput } from '@dentivohq/validation';
 import type { CreateScheduleExceptionInput, CreateTimeOffInput, UpdateScheduleExceptionInput, UpdateScheduleInput, UpdateTimeOffInput } from '@dentivohq/validation';
 import type { UpdatePatientInput } from '@dentivohq/validation';
 import type { AppointmentRecord, ClinicMembership } from './types';
@@ -277,8 +277,15 @@ export async function updatePatient(db: Database, clinicId: string, patientId: s
   return rows[0] ? getPatient(db, clinicId, patientId) : null;
 }
 
-export async function listAppointments(db: Database, clinicId: string, page: number, pageSize: number) {
+export async function listAppointments(db: Database, clinicId: string, input: AppointmentListQuery) {
+  const { page, pageSize } = input;
   const offset = (page - 1) * pageSize;
+  const date = input.date ?? null;
+  const locationId = input.locationId ?? null;
+  const dentistId = input.dentistId ?? null;
+  const serviceId = input.serviceId ?? null;
+  const patientId = input.patientId ?? null;
+  const status = input.status ?? null;
   const results = await db.transaction((tx) => [
     tx`
       select a.id, a.clinic_id, a.location_id, a.dentist_id, a.clinic_patient_id, a.service_id,
@@ -287,11 +294,25 @@ export async function listAppointments(db: Database, clinicId: string, page: num
       join clinic_patients cp on cp.id = a.clinic_patient_id and cp.clinic_id = a.clinic_id
       join patient_profiles pp on pp.id = cp.patient_profile_id
       join services s on s.id = a.service_id and s.clinic_id = a.clinic_id
+      join clinic_locations cl on cl.id = a.location_id and cl.clinic_id = a.clinic_id
       where a.clinic_id = ${clinicId}
+        and (${date}::date is null or (a.starts_at at time zone cl.timezone)::date = ${date}::date)
+        and (${locationId}::uuid is null or a.location_id = ${locationId}::uuid)
+        and (${dentistId}::uuid is null or a.dentist_id = ${dentistId}::uuid)
+        and (${serviceId}::uuid is null or a.service_id = ${serviceId}::uuid)
+        and (${patientId}::uuid is null or a.clinic_patient_id = ${patientId}::uuid)
+        and (${status}::appointment_status is null or a.status = ${status}::appointment_status)
       order by a.starts_at asc
       limit ${pageSize} offset ${offset}
     `,
-    tx`select count(*)::int as total from appointments where clinic_id = ${clinicId}`
+    tx`select count(*)::int as total from appointments a join clinic_locations cl on cl.id = a.location_id and cl.clinic_id = a.clinic_id
+       where a.clinic_id = ${clinicId}
+         and (${date}::date is null or (a.starts_at at time zone cl.timezone)::date = ${date}::date)
+         and (${locationId}::uuid is null or a.location_id = ${locationId}::uuid)
+         and (${dentistId}::uuid is null or a.dentist_id = ${dentistId}::uuid)
+         and (${serviceId}::uuid is null or a.service_id = ${serviceId}::uuid)
+         and (${patientId}::uuid is null or a.clinic_patient_id = ${patientId}::uuid)
+         and (${status}::appointment_status is null or a.status = ${status}::appointment_status)`
   ], { readOnly: true });
   const rows = results[0] ?? [];
   const countRows = results[1] ?? [];
