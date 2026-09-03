@@ -54,11 +54,11 @@ export function PublicBooking({ clinicSlug }: { clinicSlug: string }) {
     const fingerprint = JSON.stringify(payload);
     if (bookingAttempt.current?.fingerprint !== fingerprint) bookingAttempt.current = { fingerprint, key: crypto.randomUUID() };
     try {
-      await apiRequest(`/api/v1/public/clinics/${clinicSlug}/appointments`, {
+      const result = await apiRequest<{ data: { status: string } }>(`/api/v1/public/clinics/${clinicSlug}/appointments`, {
         method: 'POST', headers: { 'Idempotency-Key': bookingAttempt.current.key }, body: JSON.stringify(payload)
       });
       bookingAttempt.current = null;
-      setMessage('Your appointment request is confirmed. Check your email for details.');
+      setMessage(result.data.status === 'PENDING' ? 'Your appointment request was received. The clinic will confirm it shortly.' : 'Your appointment is confirmed. Check your email for details.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to book this appointment.'); }
   }
 
@@ -71,7 +71,7 @@ export function PublicBooking({ clinicSlug }: { clinicSlug: string }) {
       <label className="flex flex-col gap-1.5 text-sm font-semibold">Name<input className="h-10 rounded-lg border border-border px-3 font-normal" name="name" required /></label>
       <label className="flex flex-col gap-1.5 text-sm font-semibold">Email<input className="h-10 rounded-lg border border-border px-3 font-normal" name="email" type="email" required /></label>
       <label className="flex flex-col gap-1.5 text-sm font-semibold">Phone<input className="h-10 rounded-lg border border-border px-3 font-normal" name="phone" required /></label>
-      <Button className="sm:col-span-2" type="submit">Confirm appointment</Button>
+      <Button className="sm:col-span-2" type="submit">Request appointment</Button>
     </form> : null}
     {message ? <p className="mt-4 text-sm text-muted-foreground" role="status">{message}</p> : null}
   </CardContent></Card></main>;
