@@ -86,7 +86,7 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 
 ## 3. Clinic master-data operations
 
-- [ ] **OPS-001 · P0 — Complete location management**
+- [x] **OPS-001 · P0 — Complete location management**
   - Add tenant-scoped list, update, archive, and reactivate endpoints and dashboard screens.
   - Acceptance: Clinic owners and administrators can safely manage multiple timezone-aware locations.
   - Evidence: A location creation endpoint exists, but there are no list or update routes.

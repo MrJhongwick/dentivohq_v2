@@ -1,4 +1,4 @@
-import type { AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, FileOwnerType, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput } from '@dentivohq/validation';
+import type { AvailabilityQuery, CreateAppointmentInput, CreateClinicInput, CreateDentistInput, CreateLocationInput, CreatePatientInput, CreateScheduleInput, CreateServiceInput, FileOwnerType, InviteStaffInput, PublicBookingInput, RescheduleAppointmentInput, UpdateLocationInput } from '@dentivohq/validation';
 import type { AppointmentRecord, ClinicMembership } from './types';
 import type { Database } from './client';
 
@@ -93,6 +93,27 @@ export async function acceptStaffInvitation(db: Database, userId: string, userEm
   `;
   const row = rows[0];
   return row ? { id: String(row.id), clinicId: String(row.clinic_id), role: String(row.role) } : null;
+}
+
+export async function listLocations(db: Database, clinicId: string) {
+  return db`select id, clinic_id, name, timezone, address_line_1, city, region, postal_code, country_code, active from clinic_locations where clinic_id = ${clinicId} order by active desc, name`;
+}
+
+export async function updateLocation(db: Database, clinicId: string, locationId: string, userId: string, input: UpdateLocationInput) {
+  const rows = await db`
+    with updated as (
+      update clinic_locations set
+        name = coalesce(${input.name ?? null}, name), timezone = coalesce(${input.timezone ?? null}, timezone),
+        address_line_1 = coalesce(${input.addressLine1 ?? null}, address_line_1), city = coalesce(${input.city ?? null}, city),
+        region = coalesce(${input.region ?? null}, region), postal_code = coalesce(${input.postalCode ?? null}, postal_code),
+        country_code = coalesce(${input.countryCode ?? null}, country_code), active = coalesce(${input.active ?? null}, active)
+      where clinic_id = ${clinicId} and id = ${locationId} returning *
+    ), audit as (
+      insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id)
+      select ${clinicId}, ${userId}, case when active then 'CLINIC_LOCATION_UPDATED' else 'CLINIC_LOCATION_ARCHIVED' end, 'clinic_location', id::text from updated
+    ) select * from updated
+  `;
+  return rows[0] ?? null;
 }
 
 export async function assignDentistLocation(db: Database, clinicId: string, dentistId: string, locationId: string) {

@@ -57,6 +57,7 @@ export const createLocationSchema = z.object({
   region: z.string().trim().max(100).optional(), postalCode: z.string().trim().max(20).optional(),
   countryCode: z.string().trim().toUpperCase().length(2).optional()
 });
+export const updateLocationSchema = createLocationSchema.partial().extend({ active: z.boolean().optional() }).refine((value) => Object.keys(value).length > 0, { message: 'At least one location field is required.' });
 export const inviteStaffSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
   role: z.enum(['CLINIC_ADMIN', 'RECEPTIONIST', 'DENTIST', 'DENTAL_ASSISTANT'])
@@ -90,6 +91,7 @@ export type AvailabilityQuery = z.infer<typeof availabilityQuerySchema>;
 export type PublicBookingInput = z.infer<typeof publicBookingSchema>;
 export type CreateClinicInput = z.infer<typeof createClinicSchema>;
 export type CreateLocationInput = z.infer<typeof createLocationSchema>;
+export type UpdateLocationInput = z.infer<typeof updateLocationSchema>;
 export type InviteStaffInput = z.infer<typeof inviteStaffSchema>;
 export type CreateDentistInput = z.infer<typeof createDentistSchema>;
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;
