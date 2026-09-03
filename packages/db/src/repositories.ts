@@ -118,24 +118,30 @@ export async function updateLocation(db: Database, clinicId: string, locationId:
   return rows[0] ?? null;
 }
 
-export async function assignDentistLocation(db: Database, clinicId: string, dentistId: string, locationId: string) {
+export async function assignDentistLocation(db: Database, clinicId: string, dentistId: string, locationId: string, actorUserId: string) {
   const rows = await db`
-    insert into dentist_location_assignments(clinic_id, dentist_id, location_id)
-    values(${clinicId}, ${dentistId}, ${locationId}) on conflict do nothing returning *
+    with assigned as (insert into dentist_location_assignments(clinic_id, dentist_id, location_id)
+      values(${clinicId}, ${dentistId}, ${locationId}) on conflict do nothing returning *),
+    audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id, metadata)
+      select ${clinicId}, ${actorUserId}, 'DENTIST_LOCATION_ASSIGNED', 'dentist', ${dentistId}, jsonb_build_object('locationId', ${locationId}) from assigned)
+    select * from assigned
   `;
   return rows[0] ?? { clinic_id: clinicId, dentist_id: dentistId, location_id: locationId };
 }
 
-export async function assignDentistService(db: Database, clinicId: string, dentistId: string, serviceId: string) {
+export async function assignDentistService(db: Database, clinicId: string, dentistId: string, serviceId: string, actorUserId: string) {
   const rows = await db`
-    insert into dentist_services(clinic_id, dentist_id, service_id)
-    values(${clinicId}, ${dentistId}, ${serviceId}) on conflict do nothing returning *
+    with assigned as (insert into dentist_services(clinic_id, dentist_id, service_id)
+      values(${clinicId}, ${dentistId}, ${serviceId}) on conflict do nothing returning *),
+    audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id, metadata)
+      select ${clinicId}, ${actorUserId}, 'DENTIST_SERVICE_ASSIGNED', 'dentist', ${dentistId}, jsonb_build_object('serviceId', ${serviceId}) from assigned)
+    select * from assigned
   `;
   return rows[0] ?? { clinic_id: clinicId, dentist_id: dentistId, service_id: serviceId };
 }
 
-export async function unassignDentistLocation(db: Database, clinicId: string, dentistId: string, locationId: string) { await db`delete from dentist_location_assignments where clinic_id = ${clinicId} and dentist_id = ${dentistId} and location_id = ${locationId}`; }
-export async function unassignDentistService(db: Database, clinicId: string, dentistId: string, serviceId: string) { await db`delete from dentist_services where clinic_id = ${clinicId} and dentist_id = ${dentistId} and service_id = ${serviceId}`; }
+export async function unassignDentistLocation(db: Database, clinicId: string, dentistId: string, locationId: string, actorUserId: string) { await db`with removed as (delete from dentist_location_assignments where clinic_id = ${clinicId} and dentist_id = ${dentistId} and location_id = ${locationId} returning dentist_id), audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id, metadata) select ${clinicId}, ${actorUserId}, 'DENTIST_LOCATION_UNASSIGNED', 'dentist', dentist_id::text, jsonb_build_object('locationId', ${locationId}) from removed) select * from removed`; }
+export async function unassignDentistService(db: Database, clinicId: string, dentistId: string, serviceId: string, actorUserId: string) { await db`with removed as (delete from dentist_services where clinic_id = ${clinicId} and dentist_id = ${dentistId} and service_id = ${serviceId} returning dentist_id), audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id, metadata) select ${clinicId}, ${actorUserId}, 'DENTIST_SERVICE_UNASSIGNED', 'dentist', dentist_id::text, jsonb_build_object('serviceId', ${serviceId}) from removed) select * from removed`; }
 
 export async function createDentist(db: Database, clinicId: string, userId: string, input: CreateDentistInput) {
   const rows = await db`
@@ -222,21 +228,25 @@ export async function listSchedulingRules(db: Database, clinicId: string) {
   return { schedules, exceptions, timeOff };
 }
 
-export async function updateSchedule(db: Database, clinicId: string, id: string, input: UpdateScheduleInput) {
-  const rows = await db`update dentist_schedules set dentist_id = coalesce(${input.dentistId ?? null}, dentist_id), location_id = coalesce(${input.locationId ?? null}, location_id), day_of_week = coalesce(${input.dayOfWeek ?? null}, day_of_week), starts_at_local = coalesce(${input.startsAtLocal ?? null}::time, starts_at_local), ends_at_local = coalesce(${input.endsAtLocal ?? null}::time, ends_at_local), effective_from = coalesce(${input.effectiveFrom ?? null}::date, effective_from), effective_to = coalesce(${input.effectiveTo ?? null}::date, effective_to) where clinic_id = ${clinicId} and id = ${id} returning *`;
+export async function updateSchedule(db: Database, clinicId: string, id: string, actorUserId: string, input: UpdateScheduleInput) {
+  const rows = await db`with updated as (update dentist_schedules set dentist_id = coalesce(${input.dentistId ?? null}, dentist_id), location_id = coalesce(${input.locationId ?? null}, location_id), day_of_week = coalesce(${input.dayOfWeek ?? null}, day_of_week), starts_at_local = coalesce(${input.startsAtLocal ?? null}::time, starts_at_local), ends_at_local = coalesce(${input.endsAtLocal ?? null}::time, ends_at_local), effective_from = coalesce(${input.effectiveFrom ?? null}::date, effective_from), effective_to = coalesce(${input.effectiveTo ?? null}::date, effective_to) where clinic_id = ${clinicId} and id = ${id} returning *), audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) select ${clinicId}, ${actorUserId}, 'DENTIST_SCHEDULE_UPDATED', 'dentist_schedule', id::text from updated) select * from updated`;
   return rows[0] ?? null;
 }
-export async function deleteSchedule(db: Database, clinicId: string, id: string) { const rows = await db`delete from dentist_schedules where clinic_id = ${clinicId} and id = ${id} returning id`; return Boolean(rows[0]); }
+export async function deleteSchedule(db: Database, clinicId: string, id: string, actorUserId: string) { const rows = await db`with removed as (delete from dentist_schedules where clinic_id = ${clinicId} and id = ${id} returning id), audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) select ${clinicId}, ${actorUserId}, 'DENTIST_SCHEDULE_DELETED', 'dentist_schedule', id::text from removed) select * from removed`; return Boolean(rows[0]); }
 
-export async function createScheduleException(db: Database, clinicId: string, input: CreateScheduleExceptionInput) {
-  const rows = await db`insert into dentist_schedule_exceptions(clinic_id, dentist_id, location_id, exception_date, unavailable, starts_at_local, ends_at_local, reason) values(${clinicId}, ${input.dentistId}, ${input.locationId}, ${input.exceptionDate}::date, ${input.unavailable}, ${input.startsAtLocal ?? null}::time, ${input.endsAtLocal ?? null}::time, ${input.reason ?? null}) returning *`; return rows[0];
+export async function createScheduleException(db: Database, clinicId: string, actorUserId: string, input: CreateScheduleExceptionInput) {
+  const rows = await db`with inserted as (insert into dentist_schedule_exceptions(clinic_id, dentist_id, location_id, exception_date, unavailable, starts_at_local, ends_at_local, reason) values(${clinicId}, ${input.dentistId}, ${input.locationId}, ${input.exceptionDate}::date, ${input.unavailable}, ${input.startsAtLocal ?? null}::time, ${input.endsAtLocal ?? null}::time, ${input.reason ?? null}) returning *), audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) select ${clinicId}, ${actorUserId}, 'SCHEDULE_EXCEPTION_CREATED', 'schedule_exception', id::text from inserted) select * from inserted`; return rows[0];
 }
-export async function updateScheduleException(db: Database, clinicId: string, id: string, input: UpdateScheduleExceptionInput) { const rows = await db`update dentist_schedule_exceptions set exception_date = coalesce(${input.exceptionDate ?? null}::date, exception_date), unavailable = coalesce(${input.unavailable ?? null}, unavailable), starts_at_local = coalesce(${input.startsAtLocal ?? null}::time, starts_at_local), ends_at_local = coalesce(${input.endsAtLocal ?? null}::time, ends_at_local), reason = coalesce(${input.reason ?? null}, reason) where clinic_id = ${clinicId} and id = ${id} returning *`; return rows[0] ?? null; }
-export async function deleteScheduleException(db: Database, clinicId: string, id: string) { const rows = await db`delete from dentist_schedule_exceptions where clinic_id = ${clinicId} and id = ${id} returning id`; return Boolean(rows[0]); }
+export async function updateScheduleException(db: Database, clinicId: string, id: string, actorUserId: string, input: UpdateScheduleExceptionInput) { const rows = await db`with updated as (update dentist_schedule_exceptions set exception_date = coalesce(${input.exceptionDate ?? null}::date, exception_date), unavailable = coalesce(${input.unavailable ?? null}, unavailable), starts_at_local = coalesce(${input.startsAtLocal ?? null}::time, starts_at_local), ends_at_local = coalesce(${input.endsAtLocal ?? null}::time, ends_at_local), reason = coalesce(${input.reason ?? null}, reason) where clinic_id = ${clinicId} and id = ${id} returning *), audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) select ${clinicId}, ${actorUserId}, 'SCHEDULE_EXCEPTION_UPDATED', 'schedule_exception', id::text from updated) select * from updated`; return rows[0] ?? null; }
+export async function deleteScheduleException(db: Database, clinicId: string, id: string, actorUserId: string) { const rows = await db`with removed as (delete from dentist_schedule_exceptions where clinic_id = ${clinicId} and id = ${id} returning id), audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) select ${clinicId}, ${actorUserId}, 'SCHEDULE_EXCEPTION_DELETED', 'schedule_exception', id::text from removed) select * from removed`; return Boolean(rows[0]); }
 
-export async function createTimeOff(db: Database, clinicId: string, input: CreateTimeOffInput) { const rows = await db`insert into dentist_time_off(clinic_id, dentist_id, starts_at, ends_at, reason) values(${clinicId}, ${input.dentistId}, ${input.startsAt}::timestamptz, ${input.endsAt}::timestamptz, ${input.reason ?? null}) returning *`; return rows[0]; }
-export async function updateTimeOff(db: Database, clinicId: string, id: string, input: UpdateTimeOffInput) { const rows = await db`update dentist_time_off set starts_at = coalesce(${input.startsAt ?? null}::timestamptz, starts_at), ends_at = coalesce(${input.endsAt ?? null}::timestamptz, ends_at), reason = coalesce(${input.reason ?? null}, reason) where clinic_id = ${clinicId} and id = ${id} returning *`; return rows[0] ?? null; }
-export async function deleteTimeOff(db: Database, clinicId: string, id: string) { const rows = await db`delete from dentist_time_off where clinic_id = ${clinicId} and id = ${id} returning id`; return Boolean(rows[0]); }
+export async function createTimeOff(db: Database, clinicId: string, actorUserId: string, input: CreateTimeOffInput) { const rows = await db`with inserted as (insert into dentist_time_off(clinic_id, dentist_id, starts_at, ends_at, reason) values(${clinicId}, ${input.dentistId}, ${input.startsAt}::timestamptz, ${input.endsAt}::timestamptz, ${input.reason ?? null}) returning *), audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) select ${clinicId}, ${actorUserId}, 'DENTIST_TIME_OFF_CREATED', 'dentist_time_off', id::text from inserted) select * from inserted`; return rows[0]; }
+export async function updateTimeOff(db: Database, clinicId: string, id: string, actorUserId: string, input: UpdateTimeOffInput) { const rows = await db`with updated as (update dentist_time_off set starts_at = coalesce(${input.startsAt ?? null}::timestamptz, starts_at), ends_at = coalesce(${input.endsAt ?? null}::timestamptz, ends_at), reason = coalesce(${input.reason ?? null}, reason) where clinic_id = ${clinicId} and id = ${id} returning *), audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) select ${clinicId}, ${actorUserId}, 'DENTIST_TIME_OFF_UPDATED', 'dentist_time_off', id::text from updated) select * from updated`; return rows[0] ?? null; }
+export async function deleteTimeOff(db: Database, clinicId: string, id: string, actorUserId: string) { const rows = await db`with removed as (delete from dentist_time_off where clinic_id = ${clinicId} and id = ${id} returning id), audit as (insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id) select ${clinicId}, ${actorUserId}, 'DENTIST_TIME_OFF_DELETED', 'dentist_time_off', id::text from removed) select * from removed`; return Boolean(rows[0]); }
+
+export async function recordAuditEvent(db: Database, clinicId: string, actorUserId: string, action: string, resourceType: string, resourceId?: string, metadata: Record<string, string | number | boolean | null> = {}) {
+  await db`insert into audit_logs(clinic_id, actor_user_id, action, resource_type, resource_id, metadata) values(${clinicId}, ${actorUserId}, ${action}, ${resourceType}, ${resourceId ?? null}, ${JSON.stringify(metadata)}::jsonb)`;
+}
 
 export async function createPatient(db: Database, clinicId: string, userId: string, input: CreatePatientInput) {
   const rows = await db`
