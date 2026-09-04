@@ -13,6 +13,25 @@ export function fileReconciliationAction(status: FileObjectStatus, objectExists:
   return objectExists ? 'NONE' : 'REMOVE_MISSING';
 }
 
+export async function reconcileStorageOrphans(
+  bucket: Pick<R2Bucket, 'list' | 'delete'>,
+  findMetadata: (objectKey: string) => Promise<unknown>
+) {
+  let removed = 0;
+  let cursor: string | undefined;
+  do {
+    const objects = await bucket.list({ prefix: 'clinics/', limit: 1000, cursor });
+    for (const object of objects.objects) {
+      if (!await findMetadata(object.key)) {
+        await bucket.delete(object.key);
+        removed += 1;
+      }
+    }
+    cursor = objects.truncated ? objects.cursor : undefined;
+  } while (cursor);
+  return removed;
+}
+
 export async function reconcileFileStorage(db: Database, bucket: R2Bucket) {
   const records = await listFileMetadataForReconciliation(db);
   for (const record of records) {
@@ -38,8 +57,5 @@ export async function reconcileFileStorage(db: Database, bucket: R2Bucket) {
     }
   }
 
-  const objects = await bucket.list({ prefix: 'clinics/', limit: 1000 });
-  for (const object of objects.objects) {
-    if (!await findFileMetadataByObjectKey(db, object.key)) await bucket.delete(object.key);
-  }
+  return reconcileStorageOrphans(bucket, (objectKey) => findFileMetadataByObjectKey(db, objectKey));
 }

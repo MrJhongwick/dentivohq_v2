@@ -17,6 +17,8 @@
     "test": "vitest run",
     "test:integration": "vitest run --config tooling/vitest.integration.config.ts",
     "test:e2e": "playwright test",
+    "test:operations": "tsx packages/db/src/booking-load.ts",
+    "verify:postgres-recovery": "bash tooling/operations/verify-postgres-recovery.sh",
     "db:migrate": "tsx packages/db/src/migrate.ts",
     "db:check": "tsx packages/db/src/migrate.ts --check"
   },

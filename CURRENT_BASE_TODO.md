@@ -238,10 +238,12 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Status: Deployment automation is complete; live verification is pending protected GitHub environment values and provider credentials.
   - Evidence: `preview.yml`, the isolated Wrangler `preview` environment, and `tooling/runbooks/preview-environment.md` provision and deploy Neon migrations, Worker bindings/secrets, R2, Pages, CORS, and provider configuration without hardcoded production domains.
 
-- [ ] **PLAT-004 · P2 — Exercise recovery and performance**
+- [x] **PLAT-004 · P2 — Exercise recovery and performance**
   - Run booking concurrency and load tests, notification retry drills, PostgreSQL backup/restore verification, and R2 orphan reconciliation.
   - Acceptance: Documented operating thresholds and recovery evidence exist before broad clinic onboarding.
   - Evidence: Existing concurrency coverage tests only two simultaneous conflicting appointment inserts.
+  - Status: Complete. Repeatable operations drills now cover concurrent throughput and slot contention, terminal notification retries, paginated R2 orphan cleanup, and PostgreSQL backup/restore integrity.
+  - Evidence: `operations-drill.yml`, `booking-load.ts`, `verify-postgres-recovery.sh`, expanded notification and file tests, and `recovery-and-performance.md` define the thresholds and retained evidence. The local PostgreSQL 17 drill passed 50 concurrent bookings at 138 ms p95 and 357.9 requests/second, admitted exactly one of 10 colliding requests, passed all 26 integration tests, and restored all 13 migrations from backup.
 
 ## Recommended delivery gates
 

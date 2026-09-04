@@ -1,0 +1,35 @@
+name: Operations drill
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-and-load:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://dentivohq:dentivohq_local@localhost:5432/dentivohq
+      TEST_DATABASE_URL: postgresql://dentivohq:dentivohq_local@localhost:5432/dentivohq
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Start PostgreSQL 17
+        run: docker compose up -d --wait postgres
+      - run: pnpm db:migrate
+      - name: Run booking concurrency and load drill
+        run: pnpm test:operations
+      - name: Run notification retry and lease drill
+        run: pnpm exec vitest run --config tooling/vitest.integration.config.ts packages/db/src/notification-leases.integration.test.ts
+      - name: Run R2 reconciliation drill
+        run: pnpm exec vitest run apps/api/src/services/files.test.ts
+      - name: Verify PostgreSQL backup and restore
+        run: pnpm verify:postgres-recovery
