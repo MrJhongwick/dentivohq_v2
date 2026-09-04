@@ -287,6 +287,11 @@ The milestone is complete when the following journey works against real infrastr
 - [ ] CI runs lint, type checks, unit tests, non-skipped PostgreSQL integration tests, builds, and Playwright tests.
 - [ ] A Cloudflare and Neon preview deployment passes the complete clinic and patient journey.
 
+### Gate 4 API-backed journey
+
+- [x] Real API-backed end-to-end tests verify sign-in, clinic/location setup, dentist/service assignments, schedules, availability, and a persisted public booking without route mocks.
+- Evidence: `api-backed.spec.ts` runs from the guarded preview deployment workflow against the deployed Cloudflare Worker, Pages dashboard, and Neon database; viewport-only local tests remain separate.
+
 ## Explicitly out of scope
 
 The following belong to later roadmap phases and should not delay completion of the Current Base:

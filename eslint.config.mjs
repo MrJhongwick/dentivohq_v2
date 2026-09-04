@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/coverage/**', '**/.astro/**', '**/worker-configuration.d.ts', '**/dashboard/design/**'] },
+  { ignores: ['**/dist/**', '**/coverage/**', '**/.astro/**', '**/.wrangler/**', '**/worker-configuration.d.ts', '**/dashboard/design/**'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {

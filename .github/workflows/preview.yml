@@ -29,6 +29,8 @@ jobs:
       PREVIEW_LANDING_URL: ${{ vars.PREVIEW_LANDING_URL }}
       PREVIEW_CONSOLE_URL: ${{ vars.PREVIEW_CONSOLE_URL }}
       PREVIEW_TURNSTILE_SITE_KEY: ${{ vars.PREVIEW_TURNSTILE_SITE_KEY }}
+      E2E_OWNER_EMAIL: ${{ secrets.E2E_OWNER_EMAIL }}
+      E2E_OWNER_PASSWORD: ${{ secrets.E2E_OWNER_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -42,7 +44,7 @@ jobs:
       - name: Validate preview configuration
         shell: bash
         run: |
-          required=(CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID PREVIEW_DATABASE_URL PREVIEW_BETTER_AUTH_SECRET PREVIEW_API_URL PREVIEW_DASHBOARD_URL PREVIEW_LANDING_URL PREVIEW_CONSOLE_URL)
+          required=(CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID PREVIEW_DATABASE_URL PREVIEW_BETTER_AUTH_SECRET PREVIEW_API_URL PREVIEW_DASHBOARD_URL PREVIEW_LANDING_URL PREVIEW_CONSOLE_URL PREVIEW_TURNSTILE_SECRET_KEY PREVIEW_TURNSTILE_SITE_KEY E2E_OWNER_EMAIL E2E_OWNER_PASSWORD)
           for name in "${required[@]}"; do
             if [ -z "${!name}" ]; then echo "Missing required preview setting: $name" >&2; exit 1; fi
           done
@@ -52,12 +54,14 @@ jobs:
         run: pnpm db:migrate
       - name: Create preview R2 bucket when absent
         shell: bash
-        run: pnpm --filter @dentivohq/api exec wrangler r2 bucket create dentivohq-uploads-preview 2>&1 | tee /tmp/r2-create.log || grep -qi "already exists" /tmp/r2-create.log
+        run: |
+          set -o pipefail
+          pnpm --filter @dentivohq/api exec wrangler r2 bucket create dentivohq-uploads-preview 2>&1 | tee /tmp/r2-create.log || grep -qi "already exists" /tmp/r2-create.log
       - name: Create preview Worker
         run: >-
           pnpm --filter @dentivohq/api exec wrangler deploy --env preview
           --var APP_ENV:staging
-          --var BETTER_AUTH_URL:${PREVIEW_API_URL}
+          --var BETTER_AUTH_URL:${PREVIEW_DASHBOARD_URL}
           --var APP_DASHBOARD_URL:${PREVIEW_DASHBOARD_URL}
           --var CORS_ORIGINS:${PREVIEW_LANDING_URL},${PREVIEW_DASHBOARD_URL},${PREVIEW_CONSOLE_URL}
       - name: Configure preview Worker secrets
@@ -75,14 +79,14 @@ jobs:
         run: >-
           pnpm --filter @dentivohq/api exec wrangler deploy --env preview
           --var APP_ENV:staging
-          --var BETTER_AUTH_URL:${PREVIEW_API_URL}
+          --var BETTER_AUTH_URL:${PREVIEW_DASHBOARD_URL}
           --var APP_DASHBOARD_URL:${PREVIEW_DASHBOARD_URL}
           --var CORS_ORIGINS:${PREVIEW_LANDING_URL},${PREVIEW_DASHBOARD_URL},${PREVIEW_CONSOLE_URL}
       - name: Build browser apps for preview
         env:
           PUBLIC_API_URL: ${{ vars.PREVIEW_API_URL }}
           PUBLIC_DASHBOARD_URL: ${{ vars.PREVIEW_DASHBOARD_URL }}
-          VITE_API_URL: ${{ vars.PREVIEW_API_URL }}
+          VITE_API_URL: ${{ vars.PREVIEW_DASHBOARD_URL }}
           VITE_TURNSTILE_SITE_KEY: ${{ vars.PREVIEW_TURNSTILE_SITE_KEY }}
         run: pnpm --filter @dentivohq/landing --filter @dentivohq/dashboard --filter @dentivohq/console build
       - name: Ensure Pages projects exist
@@ -94,11 +98,20 @@ jobs:
           done
       - name: Deploy preview Pages applications
         run: |
-          pnpm --filter @dentivohq/api exec wrangler pages deploy apps/landing/dist --project-name=dentivohq-landing-preview --branch=staging
-          pnpm --filter @dentivohq/api exec wrangler pages deploy apps/dashboard/dist --project-name=dentivohq-dashboard-preview --branch=staging
-          pnpm --filter @dentivohq/api exec wrangler pages deploy apps/console/dist --project-name=dentivohq-console-preview --branch=staging
+          pnpm --filter @dentivohq/api exec wrangler pages deploy ../../apps/landing/dist --project-name=dentivohq-landing-preview --branch=staging
+          pnpm --filter @dentivohq/api exec wrangler pages deploy --cwd ../dashboard --branch=staging
+          pnpm --filter @dentivohq/api exec wrangler pages deploy ../../apps/console/dist --project-name=dentivohq-console-preview --branch=staging
       - name: Verify dependency readiness
         shell: bash
         run: |
           response="$(curl --fail-with-body --retry 5 --retry-all-errors --retry-delay 5 "${PREVIEW_API_URL}/health")"
           node -e 'const body=JSON.parse(process.argv[1]); if(body.data?.status!=="ready") process.exit(1)' "$response"
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run real API-backed clinic and booking journey
+        env:
+          E2E_API_URL: ${{ vars.PREVIEW_DASHBOARD_URL }}
+          E2E_DASHBOARD_URL: ${{ vars.PREVIEW_DASHBOARD_URL }}
+          E2E_OWNER_EMAIL: ${{ secrets.E2E_OWNER_EMAIL }}
+          E2E_OWNER_PASSWORD: ${{ secrets.E2E_OWNER_PASSWORD }}
+        run: pnpm exec playwright test tooling/e2e/api-backed.spec.ts --project=chromium
