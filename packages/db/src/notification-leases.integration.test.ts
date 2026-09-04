@@ -38,11 +38,25 @@ describe.sequential('notification job leases', () => {
     expect(await complete(jobId, currentToken)).toHaveLength(1);
   });
 
+  it('moves a repeatedly failed delivery to the terminal failed state', async () => {
+    const rows = await sql`insert into notification_jobs(clinic_id, event_type, payload, scheduled_for)
+      values(${clinicId}, 'APPOINTMENT_CONFIRMATION', ${sql.json({ appointmentId })}, now() - interval '1 minute') returning id`;
+    const jobId = String(rows[0]?.id);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const claimed = await sql`select * from claim_notification_jobs(100)`;
+      expect(claimed.some((job) => String(job.job_id) === jobId)).toBe(true);
+      await sql`update notification_jobs set status = 'PENDING', scheduled_for = now() - interval '1 second', lease_token = null, lease_expires_at = null where id = ${jobId}`;
+    }
+    await sql`select * from claim_notification_jobs(100)`;
+    const failed = await sql`select status, attempts from notification_jobs where id = ${jobId}`;
+    expect(failed[0]).toMatchObject({ status: 'FAILED', attempts: 5 });
+  });
+
   it('cancels pending work when its appointment is cancelled', async () => {
     await sql`update appointments set status = 'CANCELLED', is_active = false where id = ${appointmentId}`;
     await sql`select * from claim_notification_jobs(25)`;
     const jobs = await sql`select status from notification_jobs where clinic_id = ${clinicId}`;
-    expect(jobs.every((job) => ['DELIVERED', 'CANCELLED'].includes(String(job.status)))).toBe(true);
+    expect(jobs.every((job) => ['DELIVERED', 'FAILED', 'CANCELLED'].includes(String(job.status)))).toBe(true);
   });
 
   function complete(jobId: string, token: string) {

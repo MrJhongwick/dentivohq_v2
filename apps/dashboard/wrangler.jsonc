@@ -1,0 +1,9 @@
+{
+  "$schema": "../api/node_modules/wrangler/config-schema.json",
+  "name": "dentivohq-dashboard-preview",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-08-30",
+  "services": [
+    { "binding": "API", "service": "dentivohq-api-preview" }
+  ]
+}

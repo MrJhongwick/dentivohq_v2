@@ -224,20 +224,26 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: Limit violations return explicit domain errors and cannot be bypassed through direct API calls.
   - Evidence: `planEntitlements` is declared in `packages/config/src/index.ts` but is not enforced.
 
-- [ ] **PLAT-002 · P1 — Add dependency-aware readiness and safe observability**
+- [x] **PLAT-002 · P1 — Add dependency-aware readiness and safe observability**
   - Add database and binding readiness checks, request correlation, queue metrics, and structured logs that exclude patient information.
   - Acceptance: Operators can distinguish application, PostgreSQL, R2, email, and queue failures without exposing sensitive data.
   - Evidence: `/health` currently returns a static success response.
+  - Status: Complete. Readiness now probes PostgreSQL and R2, reports required binding and email configuration, exposes platform-admin queue metrics, propagates correlation IDs, and emits payload-free structured operational logs.
+  - Evidence: `/health`, `/health/live`, `/api/v1/platform/metrics/notifications`, and `observability.ts` distinguish dependency failures without logging request bodies, recipients, or patient data.
 
 - [ ] **PLAT-003 · P2 — Create and verify a preview environment**
   - Configure Neon, Worker secrets, rate limiting, the R2 preview bucket, Cloudflare Pages URLs, CORS origins, and OAuth callbacks using environment-based domains.
   - Acceptance: A preview deployment completes the full clinic setup and public booking journey.
   - Evidence: The repository contains environment and Wrangler configuration, but no verified live preview evidence.
+  - Status: Deployment automation is complete; live verification is pending protected GitHub environment values and provider credentials.
+  - Evidence: `preview.yml`, the isolated Wrangler `preview` environment, and `tooling/runbooks/preview-environment.md` provision and deploy Neon migrations, Worker bindings/secrets, R2, Pages, CORS, and provider configuration without hardcoded production domains.
 
-- [ ] **PLAT-004 · P2 — Exercise recovery and performance**
+- [x] **PLAT-004 · P2 — Exercise recovery and performance**
   - Run booking concurrency and load tests, notification retry drills, PostgreSQL backup/restore verification, and R2 orphan reconciliation.
   - Acceptance: Documented operating thresholds and recovery evidence exist before broad clinic onboarding.
   - Evidence: Existing concurrency coverage tests only two simultaneous conflicting appointment inserts.
+  - Status: Complete. Repeatable operations drills now cover concurrent throughput and slot contention, terminal notification retries, paginated R2 orphan cleanup, and PostgreSQL backup/restore integrity.
+  - Evidence: `operations-drill.yml`, `booking-load.ts`, `verify-postgres-recovery.sh`, expanded notification and file tests, and `recovery-and-performance.md` define the thresholds and retained evidence. The local PostgreSQL 17 drill passed 50 concurrent bookings at 138 ms p95 and 357.9 requests/second, admitted exactly one of 10 colliding requests, passed all 26 integration tests, and restored all 13 migrations from backup.
 
 ## Recommended delivery gates
 
@@ -280,6 +286,11 @@ The milestone is complete when the following journey works against real infrastr
 - [ ] Appointment history, audit events, notifications, and tenant isolation are verified.
 - [ ] CI runs lint, type checks, unit tests, non-skipped PostgreSQL integration tests, builds, and Playwright tests.
 - [ ] A Cloudflare and Neon preview deployment passes the complete clinic and patient journey.
+
+### Gate 4 API-backed journey
+
+- [x] Real API-backed end-to-end tests verify sign-in, clinic/location setup, dentist/service assignments, schedules, availability, and a persisted public booking without route mocks.
+- Evidence: `api-backed.spec.ts` runs from the guarded preview deployment workflow against the deployed Cloudflare Worker, Pages dashboard, and Neon database; viewport-only local tests remain separate.
 
 ## Explicitly out of scope
 

@@ -2,6 +2,7 @@ import {
   abandonFileMetadata, activateFileMetadata, finalizeFileDeletion, findFileMetadataByObjectKey,
   listFileMetadataForReconciliation, removeMissingFileMetadata, type Database
 } from '@dentivohq/db';
+import { writeOperationalLog } from './observability';
 
 type FileObjectStatus = 'PENDING_UPLOAD' | 'ACTIVE' | 'DELETE_PENDING';
 export type FileReconciliationAction = 'ACTIVATE' | 'ABANDON' | 'DELETE' | 'REMOVE_MISSING' | 'NONE';
@@ -10,6 +11,25 @@ export function fileReconciliationAction(status: FileObjectStatus, objectExists:
   if (status === 'DELETE_PENDING') return 'DELETE';
   if (status === 'PENDING_UPLOAD') return objectExists ? 'ACTIVATE' : 'ABANDON';
   return objectExists ? 'NONE' : 'REMOVE_MISSING';
+}
+
+export async function reconcileStorageOrphans(
+  bucket: Pick<R2Bucket, 'list' | 'delete'>,
+  findMetadata: (objectKey: string) => Promise<unknown>
+) {
+  let removed = 0;
+  let cursor: string | undefined;
+  do {
+    const objects = await bucket.list({ prefix: 'clinics/', limit: 1000, cursor });
+    for (const object of objects.objects) {
+      if (!await findMetadata(object.key)) {
+        await bucket.delete(object.key);
+        removed += 1;
+      }
+    }
+    cursor = objects.truncated ? objects.cursor : undefined;
+  } while (cursor);
+  return removed;
 }
 
 export async function reconcileFileStorage(db: Database, bucket: R2Bucket) {
@@ -33,12 +53,9 @@ export async function reconcileFileStorage(db: Database, bucket: R2Bucket) {
         await removeMissingFileMetadata(db, clinicId, fileId);
       }
     } catch {
-      console.error(JSON.stringify({ level: 'error', code: 'FILE_RECONCILIATION_FAILED', fileId }));
+      writeOperationalLog({ level: 'error', event: 'file.reconciliation.failed', component: 'file_reconciliation', code: 'FILE_RECONCILIATION_FAILED' });
     }
   }
 
-  const objects = await bucket.list({ prefix: 'clinics/', limit: 1000 });
-  for (const object of objects.objects) {
-    if (!await findFileMetadataByObjectKey(db, object.key)) await bucket.delete(object.key);
-  }
+  return reconcileStorageOrphans(bucket, (objectKey) => findFileMetadataByObjectKey(db, objectKey));
 }
