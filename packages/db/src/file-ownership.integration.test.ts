@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Database } from './client';
+import { beginFileDeletion, finalizeFileDeletion, findFileMetadata } from './repositories';
 
 const sql = postgres(process.env.TEST_DATABASE_URL!, { max: 1 });
+const db = sql as unknown as Database;
 
 describe('file owner tenant enforcement', () => {
   const suffix = randomUUID().slice(0, 8);
@@ -44,5 +47,16 @@ describe('file owner tenant enforcement', () => {
     ) values(
       ${clinicB}, 'CLINIC_PATIENT', ${clinicPatientId}, 'test', ${`test/${randomUUID()}`}, 'application/pdf', 1, ${userId}
     )`).rejects.toMatchObject({ code: '23503' });
+  });
+
+  it('cannot retrieve another clinic file and removes deleted metadata', async () => {
+    const fileId = randomUUID();
+    await sql`insert into file_objects(id, clinic_id, owner_type, owner_id, bucket, object_key, mime_type, size_bytes, created_by, status)
+      values(${fileId}, ${clinicA}, 'CLINIC_PATIENT', ${clinicPatientId}, 'test', ${`test/${fileId}`}, 'application/pdf', 1, ${userId}, 'ACTIVE')`;
+    await expect(findFileMetadata(db, clinicB, fileId)).resolves.toBeNull();
+    await expect(findFileMetadata(db, clinicA, fileId)).resolves.toMatchObject({ id: fileId });
+    await beginFileDeletion(db, clinicA, fileId);
+    await finalizeFileDeletion(db, clinicA, fileId, userId);
+    await expect(findFileMetadata(db, clinicA, fileId)).resolves.toBeNull();
   });
 });

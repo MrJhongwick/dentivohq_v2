@@ -113,15 +113,19 @@ The approved architecture and core backend primitives are present, but DentivoHQ
 
 ## 4. Scheduling correctness and staff workflow
 
-- [ ] **SCH-001 · P0 — Build the real appointment calendar and list**
+- [x] **SCH-001 · P0 — Build the real appointment calendar and list**
   - Implement operational schedule views with filters for date, location, dentist, service, patient, and status.
   - Acceptance: Staff can inspect and navigate the clinic schedule using real API data.
   - Evidence: Dashboard navigation currently reports that operational screens are reserved for a future workflow.
+  - Status: Complete. The dashboard calendar uses the tenant-scoped appointment API with date, location, dentist, service, patient, and status filters.
+  - Evidence: `appointment-workspace.tsx`, `appointmentListQuerySchema`, and `listAppointments()` provide the live schedule and server-side filtering.
 
-- [ ] **SCH-002 · P0 — Build staff-side booking and appointment management**
+- [x] **SCH-002 · P0 — Build staff-side booking and appointment management**
   - Implement patient lookup or creation, valid slot selection, notes, confirmation, status changes, cancellation, and rescheduling.
   - Acceptance: The complete staff booking journey uses the existing protected scheduling APIs.
   - Evidence: Appointment APIs exist, but the staff-facing workflow is absent.
+  - Status: Complete. Staff can find or create a patient, choose only computed slots, add notes, book, transition status, cancel, and reschedule from the schedule workspace.
+  - Evidence: `BookingPanel` and `AppointmentActions` connect the operational calendar to protected appointment, patient, availability, status, and reschedule APIs.
 
 - [x] **SCH-003 · P0 — Enforce the appointment cancellation permission**
   - Separate cancellation from generic status updates or dynamically require `appointment.cancel` when the requested status is `CANCELLED`.
@@ -141,37 +145,49 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Status: Complete. Patient profiles are tenant-owned and the database rejects cross-clinic profile links; anonymous booking never updates an existing profile.
   - Evidence: `0006_clinic_scoped_patient_profiles.sql` scopes email uniqueness to each clinic, adds a composite tenant foreign key, and isolates public-booking identity resolution by clinic.
 
-- [ ] **SCH-006 · P1 — Expand scheduling edge-case tests**
+- [x] **SCH-006 · P1 — Expand scheduling edge-case tests**
   - Cover DST transitions, effective-date bounds, partial-day exceptions, time off, overlapping schedule rows, inactive resources, and service-duration boundaries.
   - Acceptance: Availability is proven in at least two IANA timezones and across DST boundary cases.
   - Evidence: No focused availability test cases currently exist.
+  - Status: Complete. Availability handles duplicate overlapping rows, partial-day exceptions, time off, inactive resources, effective bounds, duration boundaries, and real DST transitions.
+  - Evidence: `0010_availability_edge_cases.sql` and `availability.integration.test.ts` verify America/New_York and Asia/Manila behavior.
 
-- [ ] **SCH-007 · P1 — Test appointment lifecycle, history, and audit atomicity**
+- [x] **SCH-007 · P1 — Test appointment lifecycle, history, and audit atomicity**
   - Test allowed and denied transitions, replacement appointment linking, rollback behavior, status history, audit entries, and notification side effects.
   - Acceptance: A failed operation leaves no partial appointment, history, audit, or notification state.
   - Evidence: The workflow is implemented in `packages/db/migrations/0004_appointment_workflow.sql` without matching integration coverage.
+  - Status: Complete. Integration coverage verifies valid and invalid transitions, rollback invariants, replacement linking, status history, audit events, and notification enqueueing.
+  - Evidence: `appointment-lifecycle.integration.test.ts` exercises the PostgreSQL workflow end to end.
 
 ## 5. Public booking and notifications
 
-- [ ] **BOOK-001 · P0 — Return only valid booking combinations**
+- [x] **BOOK-001 · P0 — Return only valid booking combinations**
   - Make public selections progressively filter locations, dentists, and services according to active assignments and scheduling eligibility.
   - Acceptance: Patients cannot select impossible dentist, service, and location combinations.
   - Evidence: `getPublicBookingConfig()` currently returns all three collections independently.
+  - Status: Complete. Public booking returns only active assigned combinations with a scheduling source and progressively narrows later selections.
+  - Evidence: `getPublicBookingConfig()` returns explicit location/dentist/service combinations consumed by `public-booking.tsx`.
 
-- [ ] **BOOK-002 · P1 — Align public-booking status and patient copy**
+- [x] **BOOK-002 · P1 — Align public-booking status and patient copy**
   - Decide whether public booking creates a request or a confirmed appointment, then align database state, API output, notifications, and UI copy.
   - Acceptance: The patient-facing message accurately reflects the persisted appointment state.
   - Evidence: Appointments default to `PENDING`, while `public-booking.tsx` says the appointment is confirmed.
+  - Status: Complete. Public bookings are consistently presented as pending appointment requests across persisted status, API response, email, and UI.
+  - Evidence: `0011_public_booking_request_copy.sql` emits request-received notifications and the booking UI reports the returned status accurately.
 
-- [ ] **BOOK-003 · P0 — Harden public-booking abuse controls**
+- [x] **BOOK-003 · P0 — Harden public-booking abuse controls**
   - Replace the clinic-only rate-limit key with privacy-safe source partitioning and add appropriate bot protection.
   - Acceptance: One abusive source cannot consume the entire clinic's booking allowance or create a denial of service.
   - Evidence: `enforcePublicRateLimit()` currently keys only on clinic slug.
+  - Status: Complete. Rate limits are partitioned by a keyed, truncated source digest and configured environments require server-validated Turnstile tokens.
+  - Evidence: The public appointment route hashes the Cloudflare source address before rate limiting and verifies Turnstile through Siteverify; the dashboard renders the configured widget.
 
-- [ ] **BOOK-004 · P0 — Make notification claiming recoverable and idempotent**
+- [x] **BOOK-004 · P0 — Make notification claiming recoverable and idempotent**
   - Add job leases or processing timeouts, safe reclaiming, provider deduplication, timezone-aware content, and cancellation/reschedule cleanup.
   - Acceptance: A Worker interruption cannot permanently strand jobs or cause unsafe duplicate delivery.
   - Evidence: Claimed jobs can remain in `PROCESSING` indefinitely if execution stops before completion.
+  - Status: Complete. Jobs use expiring leases and fencing tokens, Resend receives a stable provider idempotency key, local-time content includes the IANA zone, and obsolete jobs are cancelled.
+  - Evidence: `0012_notification_delivery_leases.sql`, `notifications.ts`, and `notification-leases.integration.test.ts` verify reclaiming and stale-worker rejection.
 
 ## 6. Files, audit, and tenant safety
 
@@ -187,15 +203,19 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Status: Complete. Uploads and deletions use recoverable metadata states, and the scheduled Worker reconciles interrupted operations and storage orphans.
   - Evidence: `0008_file_consistency.sql` defines the state machine; the API reserves metadata before upload and marks deletion before R2 removal; `reconcileFileStorage()` repairs or removes inconsistent records and objects.
 
-- [ ] **SEC-003 · P1 — Prove private-file authorization**
+- [x] **SEC-003 · P1 — Prove private-file authorization**
   - Add tests for wrong clinic, wrong role, missing owner, deleted object, blocked MIME type, oversized upload, and private caching headers.
   - Acceptance: No test can retrieve or mutate another clinic's file metadata or R2 object.
   - Evidence: There are currently no file-route authorization tests.
+  - Status: Complete. Tests cover tenant ownership, missing owners and objects, read-only roles, blocked types, size limits, deletion, and private download headers.
+  - Evidence: `private-files.test.ts` and `file-ownership.integration.test.ts` exercise both route safeguards and database isolation.
 
-- [ ] **SEC-004 · P1 — Complete and protect audit coverage**
+- [x] **SEC-004 · P1 — Complete and protect audit coverage**
   - Inventory all security-relevant actions, record safe metadata, and define append-only database permissions.
   - Acceptance: Clinic changes, membership events, sensitive patient access, appointments, and files create verified audit events without leaking patient data.
   - Evidence: `audit_logs` exists, but coverage and append-only enforcement are incomplete.
+  - Status: Complete. Clinic configuration, assignments, schedules, patient access, appointments, and files emit tenant-scoped events with identifiers and non-sensitive metadata; direct mutation is denied.
+  - Evidence: `0013_append_only_audit_logs.sql`, audited repository transactions, read-route audit calls, and `audit-append-only.integration.test.ts` protect and verify the trail.
 
 ## 7. Platform and deployment readiness
 

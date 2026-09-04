@@ -9,6 +9,15 @@ export const paginationSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20)
 });
 
+export const appointmentListQuerySchema = paginationSchema.extend({
+  date: z.iso.date().optional(),
+  locationId: uuidSchema.optional(),
+  dentistId: uuidSchema.optional(),
+  serviceId: uuidSchema.optional(),
+  patientId: uuidSchema.optional(),
+  status: z.enum(['PENDING', 'CONFIRMED', 'CHECKED_IN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'RESCHEDULED']).optional()
+});
+
 export const appointmentStatusSchema = z.enum([
   'PENDING', 'CONFIRMED', 'CHECKED_IN', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'RESCHEDULED'
 ]);
@@ -43,7 +52,8 @@ export const publicBookingSchema = z.object({
     name: z.string().trim().min(2).max(120),
     email: z.string().trim().toLowerCase().email().max(254),
     phone: z.string().trim().min(7).max(32)
-  })
+  }),
+  turnstileToken: z.string().trim().min(1).max(2048).optional()
 });
 
 export const createClinicSchema = z.object({
@@ -98,6 +108,7 @@ export const acceptInvitationSchema = z.object({ token: z.string().regex(/^[a-f0
 export const dentistAssignmentSchema = z.object({ dentistId: uuidSchema, locationId: uuidSchema.optional(), serviceId: uuidSchema.optional() });
 
 export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>;
+export type AppointmentListQuery = z.infer<typeof appointmentListQuerySchema>;
 export type AppointmentStatus = z.infer<typeof appointmentStatusSchema>;
 export type RescheduleAppointmentInput = z.infer<typeof rescheduleAppointmentSchema>;
 export type AvailabilityQuery = z.infer<typeof availabilityQuerySchema>;

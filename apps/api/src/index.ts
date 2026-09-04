@@ -5,12 +5,12 @@ import {
   createAppointment, createClinic, createDatabase, createDentist, createLocation, createPatient, createScheduleException, createTimeOff,
   createPublicAppointment, createSchedule, createService, createStaffInvitation, deleteSchedule, deleteScheduleException, deleteTimeOff, finalizeFileDeletion,
   fileOwnerBelongsToClinic, findFileMetadata, getClinicDashboardOverview, getPatient, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
-  listDentists, listLocations, listPatients, listSchedulingRules, listServices, listUserClinics, reserveFileMetadata, rescheduleAppointment, unassignDentistLocation, unassignDentistService, updateAppointmentStatus, updateDentist, updateLocation, updatePatient, updateSchedule, updateScheduleException, updateService, updateTimeOff, type Database
+  listDentists, listLocations, listPatients, listSchedulingRules, listServices, listUserClinics, recordAuditEvent, reserveFileMetadata, rescheduleAppointment, unassignDentistLocation, unassignDentistService, updateAppointmentStatus, updateDentist, updateLocation, updatePatient, updateSchedule, updateScheduleException, updateService, updateTimeOff, type Database
 } from '@dentivohq/db';
 import {
-  acceptInvitationSchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
+  acceptInvitationSchema, appointmentListQuerySchema, availabilityQuerySchema, clinicIdParamSchema, createAppointmentSchema, createClinicSchema, createDentistSchema,
   createLocationSchema, createPatientSchema, createScheduleExceptionSchema, createScheduleSchema, createServiceSchema, createTimeOffSchema, inviteStaffSchema,
-  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, paginationSchema, patientListQuerySchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateDentistSchema, updateLocationSchema, updatePatientSchema, updateScheduleExceptionSchema, updateScheduleSchema, updateServiceSchema, updateTimeOffSchema, uuidSchema
+  dentistAssignmentSchema, fileOwnerTypeSchema, idempotencyKeySchema, patientListQuerySchema, publicBookingSchema, rescheduleAppointmentSchema, updateAppointmentStatusSchema, updateDentistSchema, updateLocationSchema, updatePatientSchema, updateScheduleExceptionSchema, updateScheduleSchema, updateServiceSchema, updateTimeOffSchema, uuidSchema
 } from '@dentivohq/validation';
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { cors } from 'hono/cors';
@@ -19,6 +19,7 @@ import { AppError, normalizeError } from './errors';
 import { createEmailSender } from './services/email';
 import { reconcileFileStorage } from './services/files';
 import { processNotificationJobs } from './services/notifications';
+import { privateFileHeaders, requirePrivateObject, validatePrivateUpload } from './services/private-files';
 
 type AuthSession = Awaited<ReturnType<DentivoAuth['api']['getSession']>>;
 type Variables = { runtime: ServerEnv; db: Database; auth: DentivoAuth; authSession: NonNullable<AuthSession> };
@@ -71,9 +72,24 @@ async function assertClinicPermission(c: AppContext, clinicId: string, permissio
 }
 
 async function enforcePublicRateLimit(c: AppContext) {
-  const key = `booking:${c.req.param('clinicSlug') ?? 'unknown'}`;
+  const source = c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() ?? 'unknown';
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${c.get('runtime').BETTER_AUTH_SECRET}:${source}`));
+  const sourceHash = Array.from(new Uint8Array(digest).slice(0, 12), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  const key = `booking:${c.req.param('clinicSlug') ?? 'unknown'}:${sourceHash}`;
   const { success } = await c.env.PUBLIC_BOOKING_RATE_LIMIT.limit({ key });
   if (!success) throw new AppError(429, 'RATE_LIMITED', 'Too many booking requests. Please try again shortly.');
+}
+
+async function verifyTurnstile(c: AppContext, token: string | undefined) {
+  const secret = c.get('runtime').TURNSTILE_SECRET_KEY;
+  if (!secret) return;
+  if (!token) throw new AppError(400, 'BOT_VERIFICATION_REQUIRED', 'Complete the bot verification and try again.');
+  const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ secret, response: token, remoteip: c.req.header('CF-Connecting-IP'), idempotency_key: crypto.randomUUID() })
+  });
+  const result = await response.json() as { success?: boolean };
+  if (!response.ok || !result.success) throw new AppError(400, 'BOT_VERIFICATION_FAILED', 'Bot verification failed. Please try again.');
 }
 
 function getIdempotencyKey(c: AppContext) {
@@ -155,24 +171,24 @@ app.patch('/api/v1/clinics/:clinicId/dentists/:dentistId', requireSession, requi
 app.post('/api/v1/clinics/:clinicId/dentist-locations', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const input = dentistAssignmentSchema.required({ locationId: true }).parse(await c.req.json());
-  return c.json({ data: await assignDentistLocation(c.get('db'), clinicId, input.dentistId, input.locationId) }, 201);
+  return c.json({ data: await assignDentistLocation(c.get('db'), clinicId, input.dentistId, input.locationId, c.get('authSession').user.id) }, 201);
 });
 
 app.post('/api/v1/clinics/:clinicId/dentist-services', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const input = dentistAssignmentSchema.required({ serviceId: true }).parse(await c.req.json());
-  return c.json({ data: await assignDentistService(c.get('db'), clinicId, input.dentistId, input.serviceId) }, 201);
+  return c.json({ data: await assignDentistService(c.get('db'), clinicId, input.dentistId, input.serviceId, c.get('authSession').user.id) }, 201);
 });
 
 app.delete('/api/v1/clinics/:clinicId/dentist-locations/:dentistId/:locationId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
-  await unassignDentistLocation(c.get('db'), clinicId, uuidSchema.parse(c.req.param('dentistId')), uuidSchema.parse(c.req.param('locationId')));
+  await unassignDentistLocation(c.get('db'), clinicId, uuidSchema.parse(c.req.param('dentistId')), uuidSchema.parse(c.req.param('locationId')), c.get('authSession').user.id);
   return c.body(null, 204);
 });
 
 app.delete('/api/v1/clinics/:clinicId/dentist-services/:dentistId/:serviceId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
-  await unassignDentistService(c.get('db'), clinicId, uuidSchema.parse(c.req.param('dentistId')), uuidSchema.parse(c.req.param('serviceId')));
+  await unassignDentistService(c.get('db'), clinicId, uuidSchema.parse(c.req.param('dentistId')), uuidSchema.parse(c.req.param('serviceId')), c.get('authSession').user.id);
   return c.body(null, 204);
 });
 
@@ -199,28 +215,30 @@ app.post('/api/v1/clinics/:clinicId/schedules', requireSession, requireClinicPer
 });
 
 app.get('/api/v1/clinics/:clinicId/scheduling-rules', requireSession, requireClinicPermission('appointment.read'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); return c.json({ data: await listSchedulingRules(c.get('db'), clinicId) }); });
-app.patch('/api/v1/clinics/:clinicId/schedules/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await updateSchedule(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), updateScheduleSchema.parse(await c.req.json())); if (!data) throw new AppError(404, 'SCHEDULE_NOT_FOUND', 'Schedule not found.'); return c.json({ data }); });
-app.delete('/api/v1/clinics/:clinicId/schedules/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); await deleteSchedule(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId'))); return c.body(null, 204); });
-app.post('/api/v1/clinics/:clinicId/schedule-exceptions', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); return c.json({ data: await createScheduleException(c.get('db'), clinicId, createScheduleExceptionSchema.parse(await c.req.json())) }, 201); });
-app.patch('/api/v1/clinics/:clinicId/schedule-exceptions/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await updateScheduleException(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), updateScheduleExceptionSchema.parse(await c.req.json())); if (!data) throw new AppError(404, 'SCHEDULE_EXCEPTION_NOT_FOUND', 'Schedule exception not found.'); return c.json({ data }); });
-app.delete('/api/v1/clinics/:clinicId/schedule-exceptions/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); await deleteScheduleException(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId'))); return c.body(null, 204); });
-app.post('/api/v1/clinics/:clinicId/time-off', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); return c.json({ data: await createTimeOff(c.get('db'), clinicId, createTimeOffSchema.parse(await c.req.json())) }, 201); });
-app.patch('/api/v1/clinics/:clinicId/time-off/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await updateTimeOff(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), updateTimeOffSchema.parse(await c.req.json())); if (!data) throw new AppError(404, 'TIME_OFF_NOT_FOUND', 'Time off not found.'); return c.json({ data }); });
-app.delete('/api/v1/clinics/:clinicId/time-off/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); await deleteTimeOff(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId'))); return c.body(null, 204); });
+app.patch('/api/v1/clinics/:clinicId/schedules/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await updateSchedule(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), c.get('authSession').user.id, updateScheduleSchema.parse(await c.req.json())); if (!data) throw new AppError(404, 'SCHEDULE_NOT_FOUND', 'Schedule not found.'); return c.json({ data }); });
+app.delete('/api/v1/clinics/:clinicId/schedules/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); await deleteSchedule(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), c.get('authSession').user.id); return c.body(null, 204); });
+app.post('/api/v1/clinics/:clinicId/schedule-exceptions', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); return c.json({ data: await createScheduleException(c.get('db'), clinicId, c.get('authSession').user.id, createScheduleExceptionSchema.parse(await c.req.json())) }, 201); });
+app.patch('/api/v1/clinics/:clinicId/schedule-exceptions/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await updateScheduleException(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), c.get('authSession').user.id, updateScheduleExceptionSchema.parse(await c.req.json())); if (!data) throw new AppError(404, 'SCHEDULE_EXCEPTION_NOT_FOUND', 'Schedule exception not found.'); return c.json({ data }); });
+app.delete('/api/v1/clinics/:clinicId/schedule-exceptions/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); await deleteScheduleException(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), c.get('authSession').user.id); return c.body(null, 204); });
+app.post('/api/v1/clinics/:clinicId/time-off', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); return c.json({ data: await createTimeOff(c.get('db'), clinicId, c.get('authSession').user.id, createTimeOffSchema.parse(await c.req.json())) }, 201); });
+app.patch('/api/v1/clinics/:clinicId/time-off/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await updateTimeOff(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), c.get('authSession').user.id, updateTimeOffSchema.parse(await c.req.json())); if (!data) throw new AppError(404, 'TIME_OFF_NOT_FOUND', 'Time off not found.'); return c.json({ data }); });
+app.delete('/api/v1/clinics/:clinicId/time-off/:ruleId', requireSession, requireClinicPermission('clinic.settings.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); await deleteTimeOff(c.get('db'), clinicId, uuidSchema.parse(c.req.param('ruleId')), c.get('authSession').user.id); return c.body(null, 204); });
 
 app.post('/api/v1/clinics/:clinicId/patients', requireSession, requireClinicPermission('patient.create'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   return c.json({ data: await createPatient(c.get('db'), clinicId, c.get('authSession').user.id, createPatientSchema.parse(await c.req.json())) }, 201);
 });
 
-app.get('/api/v1/clinics/:clinicId/patients', requireSession, requireClinicPermission('patient.read'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const { page, pageSize, query } = patientListQuerySchema.parse(c.req.query()); const result = await listPatients(c.get('db'), clinicId, query, page, pageSize); return c.json({ data: result.data, meta: { page, pageSize, total: result.total } }); });
-app.get('/api/v1/clinics/:clinicId/patients/:patientId', requireSession, requireClinicPermission('patient.read'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await getPatient(c.get('db'), clinicId, uuidSchema.parse(c.req.param('patientId'))); if (!data) throw new AppError(404, 'PATIENT_NOT_FOUND', 'Patient not found.'); return c.json({ data }); });
+app.get('/api/v1/clinics/:clinicId/patients', requireSession, requireClinicPermission('patient.read'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const { page, pageSize, query } = patientListQuerySchema.parse(c.req.query()); const result = await listPatients(c.get('db'), clinicId, query, page, pageSize); await recordAuditEvent(c.get('db'), clinicId, c.get('authSession').user.id, 'PATIENT_LIST_VIEWED', 'clinic', clinicId, { page, pageSize, filtered: Boolean(query) }); return c.json({ data: result.data, meta: { page, pageSize, total: result.total } }); });
+app.get('/api/v1/clinics/:clinicId/patients/:patientId', requireSession, requireClinicPermission('patient.read'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const patientId = uuidSchema.parse(c.req.param('patientId')); const data = await getPatient(c.get('db'), clinicId, patientId); if (!data) throw new AppError(404, 'PATIENT_NOT_FOUND', 'Patient not found.'); await recordAuditEvent(c.get('db'), clinicId, c.get('authSession').user.id, 'PATIENT_RECORD_VIEWED', 'clinic_patient', patientId); return c.json({ data }); });
 app.patch('/api/v1/clinics/:clinicId/patients/:patientId', requireSession, requireClinicPermission('patient.update'), async (c) => { const { clinicId } = clinicIdParamSchema.parse(c.req.param()); const data = await updatePatient(c.get('db'), clinicId, uuidSchema.parse(c.req.param('patientId')), c.get('authSession').user.id, updatePatientSchema.parse(await c.req.json())); if (!data) throw new AppError(404, 'PATIENT_NOT_FOUND', 'Patient not found.'); return c.json({ data }); });
 
 app.get('/api/v1/clinics/:clinicId/appointments', requireSession, requireClinicPermission('appointment.read'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
-  const { page, pageSize } = paginationSchema.parse(c.req.query());
-  const result = await listAppointments(c.get('db'), clinicId, page, pageSize);
+  const filters = appointmentListQuerySchema.parse(c.req.query());
+  const { page, pageSize } = filters;
+  const result = await listAppointments(c.get('db'), clinicId, filters);
+  await recordAuditEvent(c.get('db'), clinicId, c.get('authSession').user.id, 'APPOINTMENT_SCHEDULE_VIEWED', 'clinic', clinicId, { page, pageSize, filtered: Object.keys(c.req.query()).some((key) => !['page', 'pageSize'].includes(key)) });
   return c.json({ data: result.data, meta: { page, pageSize, total: result.total } });
 });
 
@@ -274,20 +292,18 @@ app.get('/api/v1/public/clinics/:clinicSlug/availability', async (c) => {
 
 app.post('/api/v1/public/clinics/:clinicSlug/appointments', async (c) => {
   await enforcePublicRateLimit(c);
-  const appointment = await createPublicAppointment(c.get('db'), c.req.param('clinicSlug'), publicBookingSchema.parse(await c.req.json()), getIdempotencyKey(c));
+  const body = publicBookingSchema.parse(await c.req.json());
+  await verifyTurnstile(c, body.turnstileToken);
+  const appointment = await createPublicAppointment(c.get('db'), c.req.param('clinicSlug'), body, getIdempotencyKey(c));
   return c.json({ data: { id: appointment.id, startsAt: appointment.startsAt, endsAt: appointment.endsAt, status: appointment.status } }, 201);
 });
 
 app.post('/api/v1/clinics/:clinicId/files', requireSession, requireClinicPermission('patient.update'), async (c) => {
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
-  if (Number(c.req.header('content-length') ?? 0) > 10 * 1024 * 1024) throw new AppError(413, 'FILE_TOO_LARGE', 'Files must not exceed 10 MB.');
   const body = await c.req.parseBody();
-  const file = body.file;
+  const file = validatePrivateUpload(body.file, Number(c.req.header('content-length') ?? 0));
   const ownerId = uuidSchema.parse(body.ownerId);
   const ownerType = fileOwnerTypeSchema.parse(body.ownerType);
-  if (!(file instanceof File)) throw new AppError(400, 'FILE_REQUIRED', 'A file is required.');
-  if (file.size > 10 * 1024 * 1024) throw new AppError(413, 'FILE_TOO_LARGE', 'Files must not exceed 10 MB.');
-  if (!new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']).has(file.type)) throw new AppError(415, 'FILE_TYPE_NOT_ALLOWED', 'This file type is not allowed.');
   if (!await fileOwnerBelongsToClinic(c.get('db'), clinicId, ownerType, ownerId)) {
     throw new AppError(404, 'FILE_OWNER_NOT_FOUND', 'The file owner was not found in this clinic.');
   }
@@ -310,9 +326,9 @@ app.get('/api/v1/clinics/:clinicId/files/:fileId', requireSession, requireClinic
   const { clinicId } = clinicIdParamSchema.parse(c.req.param());
   const metadata = await findFileMetadata(c.get('db'), clinicId, uuidSchema.parse(c.req.param('fileId')));
   if (!metadata) throw new AppError(404, 'FILE_NOT_FOUND', 'File not found.');
-  const object = await c.env.UPLOADS.get(String(metadata.object_key));
-  if (!object) throw new AppError(404, 'FILE_NOT_FOUND', 'File not found.');
-  return new Response(object.body, { headers: { 'Content-Type': String(metadata.mime_type), 'Cache-Control': 'private, no-store', 'Content-Disposition': 'attachment' } });
+  const object = requirePrivateObject(await c.env.UPLOADS.get(String(metadata.object_key)));
+  await recordAuditEvent(c.get('db'), clinicId, c.get('authSession').user.id, 'FILE_DOWNLOADED', 'file', String(metadata.id));
+  return new Response(object.body, { headers: privateFileHeaders(String(metadata.mime_type)) });
 });
 
 app.delete('/api/v1/clinics/:clinicId/files/:fileId', requireSession, requireClinicPermission('patient.update'), async (c) => {
