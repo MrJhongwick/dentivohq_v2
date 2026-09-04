@@ -235,6 +235,8 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Configure Neon, Worker secrets, rate limiting, the R2 preview bucket, Cloudflare Pages URLs, CORS origins, and OAuth callbacks using environment-based domains.
   - Acceptance: A preview deployment completes the full clinic setup and public booking journey.
   - Evidence: The repository contains environment and Wrangler configuration, but no verified live preview evidence.
+  - Status: Deployment automation is complete; live verification is pending protected GitHub environment values and provider credentials.
+  - Evidence: `preview.yml`, the isolated Wrangler `preview` environment, and `tooling/runbooks/preview-environment.md` provision and deploy Neon migrations, Worker bindings/secrets, R2, Pages, CORS, and provider configuration without hardcoded production domains.
 
 - [ ] **PLAT-004 · P2 — Exercise recovery and performance**
   - Run booking concurrency and load tests, notification retry drills, PostgreSQL backup/restore verification, and R2 orphan reconciliation.

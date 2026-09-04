@@ -1,0 +1,104 @@
+name: Preview deployment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dentivohq-preview
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: preview
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PREVIEW_DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
+      PREVIEW_BETTER_AUTH_SECRET: ${{ secrets.PREVIEW_BETTER_AUTH_SECRET }}
+      PREVIEW_GOOGLE_CLIENT_ID: ${{ secrets.PREVIEW_GOOGLE_CLIENT_ID }}
+      PREVIEW_GOOGLE_CLIENT_SECRET: ${{ secrets.PREVIEW_GOOGLE_CLIENT_SECRET }}
+      PREVIEW_RESEND_API_KEY: ${{ secrets.PREVIEW_RESEND_API_KEY }}
+      PREVIEW_RESEND_FROM_EMAIL: ${{ vars.PREVIEW_RESEND_FROM_EMAIL }}
+      PREVIEW_TURNSTILE_SECRET_KEY: ${{ secrets.PREVIEW_TURNSTILE_SECRET_KEY }}
+      PREVIEW_API_URL: ${{ vars.PREVIEW_API_URL }}
+      PREVIEW_DASHBOARD_URL: ${{ vars.PREVIEW_DASHBOARD_URL }}
+      PREVIEW_LANDING_URL: ${{ vars.PREVIEW_LANDING_URL }}
+      PREVIEW_CONSOLE_URL: ${{ vars.PREVIEW_CONSOLE_URL }}
+      PREVIEW_TURNSTILE_SITE_KEY: ${{ vars.PREVIEW_TURNSTILE_SITE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.13.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Validate preview configuration
+        shell: bash
+        run: |
+          required=(CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID PREVIEW_DATABASE_URL PREVIEW_BETTER_AUTH_SECRET PREVIEW_API_URL PREVIEW_DASHBOARD_URL PREVIEW_LANDING_URL PREVIEW_CONSOLE_URL)
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then echo "Missing required preview setting: $name" >&2; exit 1; fi
+          done
+      - name: Apply preview database migrations
+        env:
+          DATABASE_URL: ${{ secrets.PREVIEW_DATABASE_URL }}
+        run: pnpm db:migrate
+      - name: Create preview R2 bucket when absent
+        shell: bash
+        run: pnpm --filter @dentivohq/api exec wrangler r2 bucket create dentivohq-uploads-preview 2>&1 | tee /tmp/r2-create.log || grep -qi "already exists" /tmp/r2-create.log
+      - name: Create preview Worker
+        run: >-
+          pnpm --filter @dentivohq/api exec wrangler deploy --env preview
+          --var APP_ENV:staging
+          --var BETTER_AUTH_URL:${PREVIEW_API_URL}
+          --var APP_DASHBOARD_URL:${PREVIEW_DASHBOARD_URL}
+          --var CORS_ORIGINS:${PREVIEW_LANDING_URL},${PREVIEW_DASHBOARD_URL},${PREVIEW_CONSOLE_URL}
+      - name: Configure preview Worker secrets
+        shell: bash
+        run: |
+          node <<'NODE' > /tmp/dentivohq-preview-secrets.json
+          const names = ['PREVIEW_DATABASE_URL', 'PREVIEW_BETTER_AUTH_SECRET', 'PREVIEW_GOOGLE_CLIENT_ID', 'PREVIEW_GOOGLE_CLIENT_SECRET', 'PREVIEW_RESEND_API_KEY', 'PREVIEW_RESEND_FROM_EMAIL', 'PREVIEW_TURNSTILE_SECRET_KEY'];
+          const target = ['DATABASE_URL', 'BETTER_AUTH_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'RESEND_API_KEY', 'RESEND_FROM_EMAIL', 'TURNSTILE_SECRET_KEY'];
+          const values = Object.fromEntries(names.map((name, index) => [target[index], process.env[name]]).filter(([, value]) => Boolean(value)));
+          process.stdout.write(JSON.stringify(values));
+          NODE
+          pnpm --filter @dentivohq/api exec wrangler secret bulk /tmp/dentivohq-preview-secrets.json --env preview
+          rm /tmp/dentivohq-preview-secrets.json
+      - name: Deploy configured preview Worker
+        run: >-
+          pnpm --filter @dentivohq/api exec wrangler deploy --env preview
+          --var APP_ENV:staging
+          --var BETTER_AUTH_URL:${PREVIEW_API_URL}
+          --var APP_DASHBOARD_URL:${PREVIEW_DASHBOARD_URL}
+          --var CORS_ORIGINS:${PREVIEW_LANDING_URL},${PREVIEW_DASHBOARD_URL},${PREVIEW_CONSOLE_URL}
+      - name: Build browser apps for preview
+        env:
+          PUBLIC_API_URL: ${{ vars.PREVIEW_API_URL }}
+          PUBLIC_DASHBOARD_URL: ${{ vars.PREVIEW_DASHBOARD_URL }}
+          VITE_API_URL: ${{ vars.PREVIEW_API_URL }}
+          VITE_TURNSTILE_SITE_KEY: ${{ vars.PREVIEW_TURNSTILE_SITE_KEY }}
+        run: pnpm --filter @dentivohq/landing --filter @dentivohq/dashboard --filter @dentivohq/console build
+      - name: Ensure Pages projects exist
+        shell: bash
+        run: |
+          projects="$(pnpm --filter @dentivohq/api exec wrangler pages project list)"
+          for project in dentivohq-landing-preview dentivohq-dashboard-preview dentivohq-console-preview; do
+            if ! grep -q "$project" <<< "$projects"; then pnpm --filter @dentivohq/api exec wrangler pages project create "$project" --production-branch=staging; fi
+          done
+      - name: Deploy preview Pages applications
+        run: |
+          pnpm --filter @dentivohq/api exec wrangler pages deploy apps/landing/dist --project-name=dentivohq-landing-preview --branch=staging
+          pnpm --filter @dentivohq/api exec wrangler pages deploy apps/dashboard/dist --project-name=dentivohq-dashboard-preview --branch=staging
+          pnpm --filter @dentivohq/api exec wrangler pages deploy apps/console/dist --project-name=dentivohq-console-preview --branch=staging
+      - name: Verify dependency readiness
+        shell: bash
+        run: |
+          response="$(curl --fail-with-body --retry 5 --retry-all-errors --retry-delay 5 "${PREVIEW_API_URL}/health")"
+          node -e 'const body=JSON.parse(process.argv[1]); if(body.data?.status!=="ready") process.exit(1)' "$response"

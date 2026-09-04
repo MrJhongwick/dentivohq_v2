@@ -87,3 +87,5 @@ CI performs a frozen pnpm install, applies migrations to PostgreSQL, and runs li
 - `apps/landing`, `apps/dashboard`, and `apps/console` build to `dist` for Cloudflare Pages.
 - `apps/api` deploys to Cloudflare Workers with `pnpm --filter @dentivohq/api deploy`.
 - All application URLs are environment-driven. No production domain is assumed until the owner confirms one.
+
+The isolated preview environment is deployed by the **Preview deployment** GitHub Actions workflow after its protected `preview` environment is configured. See `tooling/runbooks/preview-environment.md` for the required Neon, Cloudflare, OAuth, email, Turnstile, URL, and verification settings.
