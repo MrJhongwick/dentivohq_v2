@@ -4,7 +4,7 @@ import {
   abandonFileMetadata, acceptStaffInvitation, activateFileMetadata, assignDentistLocation, assignDentistService, beginFileDeletion,
   createAppointment, createClinic, createDatabase, createDentist, createLocation, createPatient, createScheduleException, createTimeOff,
   createPublicAppointment, createSchedule, createService, createStaffInvitation, deleteSchedule, deleteScheduleException, deleteTimeOff, finalizeFileDeletion,
-  fileOwnerBelongsToClinic, findFileMetadata, getClinicDashboardOverview, getPatient, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
+  fileOwnerBelongsToClinic, findFileMetadata, getClinicDashboardOverview, getNotificationQueueMetrics, getPatient, getPlatformOverview, getPublicBookingConfig, listAppointments, listAvailability,
   listDentists, listLocations, listPatients, listSchedulingRules, listServices, listUserClinics, recordAuditEvent, reserveFileMetadata, rescheduleAppointment, unassignDentistLocation, unassignDentistService, updateAppointmentStatus, updateDentist, updateLocation, updatePatient, updateSchedule, updateScheduleException, updateService, updateTimeOff, type Database
 } from '@dentivohq/db';
 import {
@@ -19,10 +19,11 @@ import { AppError, normalizeError } from './errors';
 import { createEmailSender } from './services/email';
 import { reconcileFileStorage } from './services/files';
 import { processNotificationJobs } from './services/notifications';
+import { inspectReadiness, resolveRequestId, writeOperationalLog } from './services/observability';
 import { privateFileHeaders, requirePrivateObject, validatePrivateUpload } from './services/private-files';
 
 type AuthSession = Awaited<ReturnType<DentivoAuth['api']['getSession']>>;
-type Variables = { runtime: ServerEnv; db: Database; auth: DentivoAuth; authSession: NonNullable<AuthSession> };
+type Variables = { runtime: ServerEnv; db: Database; auth: DentivoAuth; authSession: NonNullable<AuthSession>; requestId: string };
 type AppBindings = {
   UPLOADS: R2Bucket;
   PUBLIC_BOOKING_RATE_LIMIT: {
@@ -34,6 +35,14 @@ type AppContext = Context<{ Bindings: AppBindings; Variables: Variables }>;
 const app = new Hono<{ Bindings: AppBindings; Variables: Variables }>();
 
 app.use('*', secureHeaders());
+app.use('*', async (c, next) => {
+  const startedAt = Date.now();
+  const requestId = resolveRequestId(c.req.header('X-Request-ID'));
+  c.set('requestId', requestId);
+  c.header('X-Request-ID', requestId);
+  await next();
+  writeOperationalLog({ level: c.res.status >= 500 ? 'error' : 'info', event: 'request.completed', component: 'api', requestId, method: c.req.method, path: c.req.path, status: c.res.status, durationMs: Date.now() - startedAt });
+});
 app.use('*', async (c, next) => {
   const runtime = parseServerEnv(c.env as unknown as Record<string, unknown>);
   c.set('runtime', runtime);
@@ -97,7 +106,16 @@ function getIdempotencyKey(c: AppContext) {
 }
 
 app.get('/', (c) => c.json({ data: { name: 'DentivoHQ API', status: 'ok' } }));
-app.get('/health', (c) => c.json({ data: { status: 'ok' } }));
+app.get('/health/live', (c) => c.json({ data: { status: 'ok' } }));
+app.get('/health', async (c) => {
+  const readiness = await inspectReadiness(c.get('db'), c.get('runtime'), c.env);
+  return c.json({ data: readiness }, readiness.status === 'ready' ? 200 : 503);
+});
+app.get('/api/v1/platform/metrics/notifications', requireSession, async (c) => {
+  const overview = await getPlatformOverview(c.get('db'), c.get('authSession').user.id);
+  if (!overview) throw new AppError(403, 'PLATFORM_ADMIN_REQUIRED', 'Platform administrator access is required.');
+  return c.json({ data: await getNotificationQueueMetrics(c.get('db')) });
+});
 app.all('/api/auth/*', (c) => c.get('auth').handler(c.req.raw));
 app.get('/api/v1/auth/capabilities', (c) => c.json({ data: { google: Boolean(c.get('runtime').GOOGLE_CLIENT_ID && c.get('runtime').GOOGLE_CLIENT_SECRET) } }));
 
@@ -350,7 +368,7 @@ app.get('/api/v1/platform/overview', requireSession, async (c) => {
 app.notFound((c) => c.json({ error: { code: 'NOT_FOUND', message: 'Route not found.' } }, 404));
 app.onError((error, c) => {
   const normalized = normalizeError(error);
-  if (normalized.status === 500) console.error(JSON.stringify({ level: 'error', code: normalized.code, path: c.req.path }));
+  if (normalized.status === 500) writeOperationalLog({ level: 'error', event: 'request.failed', component: 'api', requestId: c.get('requestId'), method: c.req.method, path: c.req.path, status: normalized.status, code: normalized.code });
   return c.json({ error: { code: normalized.code, message: normalized.message } }, normalized.status);
 });
 

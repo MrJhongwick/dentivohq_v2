@@ -224,10 +224,12 @@ The approved architecture and core backend primitives are present, but DentivoHQ
   - Acceptance: Limit violations return explicit domain errors and cannot be bypassed through direct API calls.
   - Evidence: `planEntitlements` is declared in `packages/config/src/index.ts` but is not enforced.
 
-- [ ] **PLAT-002 · P1 — Add dependency-aware readiness and safe observability**
+- [x] **PLAT-002 · P1 — Add dependency-aware readiness and safe observability**
   - Add database and binding readiness checks, request correlation, queue metrics, and structured logs that exclude patient information.
   - Acceptance: Operators can distinguish application, PostgreSQL, R2, email, and queue failures without exposing sensitive data.
   - Evidence: `/health` currently returns a static success response.
+  - Status: Complete. Readiness now probes PostgreSQL and R2, reports required binding and email configuration, exposes platform-admin queue metrics, propagates correlation IDs, and emits payload-free structured operational logs.
+  - Evidence: `/health`, `/health/live`, `/api/v1/platform/metrics/notifications`, and `observability.ts` distinguish dependency failures without logging request bodies, recipients, or patient data.
 
 - [ ] **PLAT-003 · P2 — Create and verify a preview environment**
   - Configure Neon, Worker secrets, rate limiting, the R2 preview bucket, Cloudflare Pages URLs, CORS origins, and OAuth callbacks using environment-based domains.

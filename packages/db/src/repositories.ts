@@ -613,6 +613,31 @@ export async function claimNotificationJobs(db: Database, limit = 25) {
   return db`select * from claim_notification_jobs(${limit})`;
 }
 
+export async function checkDatabaseReadiness(db: Database) {
+  const rows = await db`select 1 as ready`;
+  return Number(rows[0]?.ready) === 1;
+}
+
+export async function getNotificationQueueMetrics(db: Database) {
+  const rows = await db`
+    select
+      count(*) filter (where status = 'PENDING')::int as pending,
+      count(*) filter (where status = 'PROCESSING')::int as processing,
+      count(*) filter (where status = 'FAILED')::int as failed,
+      count(*) filter (where status = 'PENDING' and scheduled_for <= now())::int as ready,
+      count(*) filter (where status = 'PROCESSING' and lease_expires_at <= now())::int as expired_leases
+    from notification_jobs
+  `;
+  const row = rows[0];
+  return {
+    pending: Number(row?.pending ?? 0),
+    processing: Number(row?.processing ?? 0),
+    failed: Number(row?.failed ?? 0),
+    ready: Number(row?.ready ?? 0),
+    expiredLeases: Number(row?.expired_leases ?? 0)
+  };
+}
+
 export async function completeNotificationJob(db: Database, jobId: string, leaseToken: string) {
   const rows = await db`
     with completed as (

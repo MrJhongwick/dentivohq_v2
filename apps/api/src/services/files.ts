@@ -2,6 +2,7 @@ import {
   abandonFileMetadata, activateFileMetadata, finalizeFileDeletion, findFileMetadataByObjectKey,
   listFileMetadataForReconciliation, removeMissingFileMetadata, type Database
 } from '@dentivohq/db';
+import { writeOperationalLog } from './observability';
 
 type FileObjectStatus = 'PENDING_UPLOAD' | 'ACTIVE' | 'DELETE_PENDING';
 export type FileReconciliationAction = 'ACTIVATE' | 'ABANDON' | 'DELETE' | 'REMOVE_MISSING' | 'NONE';
@@ -33,7 +34,7 @@ export async function reconcileFileStorage(db: Database, bucket: R2Bucket) {
         await removeMissingFileMetadata(db, clinicId, fileId);
       }
     } catch {
-      console.error(JSON.stringify({ level: 'error', code: 'FILE_RECONCILIATION_FAILED', fileId }));
+      writeOperationalLog({ level: 'error', event: 'file.reconciliation.failed', component: 'file_reconciliation', code: 'FILE_RECONCILIATION_FAILED' });
     }
   }
 
